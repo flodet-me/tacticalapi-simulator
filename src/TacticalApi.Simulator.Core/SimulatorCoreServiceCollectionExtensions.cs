@@ -18,10 +18,9 @@ public static class SimulatorCoreServiceCollectionExtensions
         services.AddSingleton<SituationStore>();
         services.AddSingleton<ISituationIngest>(sp => sp.GetRequiredService<SituationStore>());
 
-        // Supported situation object types - add more mergers here (or from
-        // your own assembly) to extend the simulator.
-        services.AddSingleton<ISituationObjectMerger, SymbolMerger>();
-        services.AddSingleton<ISituationObjectMerger, TextDocumentMerger>();
+        // All 11 situation object types of the v0 contract are supported;
+        // AllMergers is the single source of truth for the merger set.
+        foreach (var merger in AllMergers.CreateAll()) services.AddSingleton<ISituationObjectMerger>(merger);
 
         services.AddHostedService<ExpirySweeper>();
         return services;

@@ -81,7 +81,8 @@ public sealed class OpenSkySource(
                 $"OpenSky live track, origin: {country ?? "unknown"}");
 
             updates.Add(TrackUpdateFactory.CreateSymbolUpdate(
-                track, options1.ReporterId, options1.SymbolCode, options1.SymbolCatalog, now, options1.TrackTimeToLive));
+                track, options1.ReporterId, options1.SymbolCode, options1.SymbolCatalog, now,
+                options1.TrackTimeToLive));
         }
 
         logger.LogDebug("OpenSky produced {Count} track updates", updates.Count);

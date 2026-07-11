@@ -62,10 +62,10 @@ public sealed class SituationStoreTests
     }
 
     [Fact]
-    public void AddOrUpdate_FailsForUnsupportedType()
+    public void AddOrUpdate_FailsForUpdateWithoutType()
     {
         var store = TestHelpers.CreateStore();
-        var update = new UpdateSituationObject { Route = new UpdateRoute() };
+        var update = new UpdateSituationObject(); // oneof not set
 
         var result = store.AddOrUpdate([update]);
 

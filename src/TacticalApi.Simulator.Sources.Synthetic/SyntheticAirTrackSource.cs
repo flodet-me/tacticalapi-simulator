@@ -62,7 +62,8 @@ public sealed class SyntheticAirTrackSource(
                 "Synthetic simulator track");
 
             updates.Add(TrackUpdateFactory.CreateSymbolUpdate(
-                track, options1.ReporterId, options1.SymbolCode, options1.SymbolCatalog, now, options1.TrackTimeToLive));
+                track, options1.ReporterId, options1.SymbolCode, options1.SymbolCatalog, now,
+                options1.TrackTimeToLive));
         }
 
         return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);

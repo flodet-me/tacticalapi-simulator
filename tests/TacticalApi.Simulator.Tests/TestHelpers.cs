@@ -20,7 +20,7 @@ internal static class TestHelpers
     {
         var monitor = Options(options);
         return new SituationStore(
-            [new SymbolMerger(), new TextDocumentMerger()],
+            AllMergers.CreateAll(),
             broker ?? new SituationEventBroker(monitor),
             monitor,
             NullLogger<SituationStore>.Instance);

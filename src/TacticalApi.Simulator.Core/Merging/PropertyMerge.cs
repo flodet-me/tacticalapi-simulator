@@ -96,6 +96,102 @@ internal static class PropertyMerge
             : new DataPropertyMessagePrecedence { CreationMetaData = meta, Content = update.Content };
     }
 
+    internal static DataPropertyColor? Color(DataPropertyColor? current, UpdatePropertyColor? update,
+        CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyColor { CreationMetaData = meta, Content = update.Content?.Clone() };
+    }
+
+    internal static DataPropertyActionTask? ActionTask(DataPropertyActionTask? current,
+        UpdatePropertyActionTask? update, CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyActionTask { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyActionTaskStatus? ActionTaskStatus(DataPropertyActionTaskStatus? current,
+        UpdatePropertyActionTaskStatus? update, CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyActionTaskStatus { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyActionTaskPriorityCode? ActionTaskPriority(DataPropertyActionTaskPriorityCode? current,
+        UpdatePropertyActionTaskPriorityCode? update, CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyActionTaskPriorityCode { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyActionEvent? ActionEvent(DataPropertyActionEvent? current,
+        UpdatePropertyActionEvent? update, CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyActionEvent { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyUnitDesignation? UnitDesignation(DataPropertyUnitDesignation? current,
+        UpdatePropertyUnitDesignation? update, CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyUnitDesignation { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyLineStyle? LineStyle(DataPropertyLineStyle? current, UpdatePropertyLineStyle? update,
+        CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyLineStyle { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyRouteType? RouteType(DataPropertyRouteType? current, UpdatePropertyRouteType? update,
+        CreationMetaData meta)
+    {
+        return update is null
+            ? current
+            : new DataPropertyRouteType { CreationMetaData = meta, Content = update.Content };
+    }
+
+    internal static DataPropertyReferences? References(DataPropertyReferences? current,
+        UpdatePropertyReferences? update, CreationMetaData meta)
+    {
+        if (update is null) return current;
+
+        var result = new DataPropertyReferences { CreationMetaData = meta };
+        foreach (var identity in update.Contents) result.Contents.Add(identity.Clone());
+
+        return result;
+    }
+
+    /// <summary>
+    ///     Overlay content: the update carries nested UpdateSituationObjects; the
+    ///     stored property carries full SituationObjects. Each nested update is
+    ///     materialized as a fresh object via the shared merge logic.
+    /// </summary>
+    internal static DataPropertySituationObjects? SituationObjects(
+        DataPropertySituationObjects? current,
+        UpdatePropertySituationObjects? update,
+        CreationMetaData meta,
+        Func<UpdateSituationObject, SituationObject?> materialize)
+    {
+        if (update is null) return current;
+
+        var result = new DataPropertySituationObjects { CreationMetaData = meta };
+        foreach (var nested in update.Contents)
+            if (materialize(nested) is { } obj)
+                result.Contents.Add(obj);
+
+        return result;
+    }
+
     /// <summary>
     ///     The update model carries a single foreign key (identity + source);
     ///     the stored model keeps a dictionary keyed by source.

@@ -13,6 +13,13 @@ public static class SyntheticServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.AddSimulationSource<SyntheticAirTrackSource>();
+
+        services.AddOptions<SyntheticScenarioOptions>()
+            .Bind(configuration.GetSection(SyntheticScenarioOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<SyntheticScenarioSource>();
+
         return services;
     }
 }

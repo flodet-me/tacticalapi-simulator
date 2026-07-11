@@ -162,7 +162,16 @@ public sealed class SituationStore(
         return obj.TypeCase switch
         {
             SituationObject.TypeOneofCase.Symbol => obj.Symbol.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.ActionTask => obj.ActionTask.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.ActionEvent => obj.ActionEvent.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.OrganizationUnit => obj.OrganizationUnit.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.Route => obj.Route.ExpiryTime?.Content,
             SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.PictureDocument => obj.PictureDocument.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.VoiceMessageDocument => obj.VoiceMessageDocument.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.NatoMessageDocument => obj.NatoMessageDocument.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.OverlayDocument => obj.OverlayDocument.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.SketchDocument => obj.SketchDocument.ExpiryTime?.Content,
             _ => null
         };
     }
@@ -172,7 +181,16 @@ public sealed class SituationStore(
         return obj.TypeCase switch
         {
             SituationObject.TypeOneofCase.Symbol => obj.Symbol.Identity,
+            SituationObject.TypeOneofCase.ActionTask => obj.ActionTask.Identity,
+            SituationObject.TypeOneofCase.ActionEvent => obj.ActionEvent.Identity,
+            SituationObject.TypeOneofCase.OrganizationUnit => obj.OrganizationUnit.Identity,
+            SituationObject.TypeOneofCase.Route => obj.Route.Identity,
             SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.Identity,
+            SituationObject.TypeOneofCase.PictureDocument => obj.PictureDocument.Identity,
+            SituationObject.TypeOneofCase.VoiceMessageDocument => obj.VoiceMessageDocument.Identity,
+            SituationObject.TypeOneofCase.NatoMessageDocument => obj.NatoMessageDocument.Identity,
+            SituationObject.TypeOneofCase.OverlayDocument => obj.OverlayDocument.Identity,
+            SituationObject.TypeOneofCase.SketchDocument => obj.SketchDocument.Identity,
             _ => null
         };
     }
