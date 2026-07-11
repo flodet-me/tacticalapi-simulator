@@ -4,10 +4,6 @@
     Generates the C# data model + service stubs directly from the official
     TacticalAPI .proto contract. No internal abstraction on top: the generated
     Rheinmetall.TacticalApi.V0 types ARE the model used everywhere.
-
-    The protos live in /protos (copied verbatim from
-    https://github.com/Rheinmetall/tacticalapi). If you prefer a git submodule,
-    point ProtoRoot at the submodule path instead - nothing else changes.
   -->
 
   <PropertyGroup>
