@@ -2,7 +2,8 @@
 
 A .NET 10 / C# simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface (`rheinmetall.tactical_api.v0.Situation`).
 
-It implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process. Simulated data sources (a synthetic air picture and a live [OpenSky Network](https://opensky-network.org/) flight tracker) feed tracks into the situation using the unmodified TacticalAPI data model.
+It implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process.
+Simulated data sources (a synthetic air picture and a live [OpenSky Network](https://opensky-network.org/) flight tracker) feed tracks into the situation using the unmodified TacticalAPI data model.
 
 ## Design principles
 
@@ -25,9 +26,7 @@ tests/
   TacticalApi.Simulator.Tests       xUnit tests for store, broker, mapping, sources
 ```
 
-Dependency direction: `Host → Sources → Core → Contracts`. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers).
-
-> The protos are copied into `/protos`. If you prefer the submodule approach recommended by Rheinmetall, replace the folder with `git submodule add https://github.com/Rheinmetall/tacticalapi.git external/tacticalapi` and point `ProtoRoot` in the Contracts csproj at it. The CI checkout already runs with `submodules: recursive`.
+Dependency direction: `Host → Sources.* → Core → Contracts`. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers).
 
 ## Running
 
