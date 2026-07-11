@@ -1,0 +1,3 @@
+[submodule "external/tacticalapi"]
+	path = external/tacticalapi
+	url = https://github.com/Rheinmetall/tacticalapi.git

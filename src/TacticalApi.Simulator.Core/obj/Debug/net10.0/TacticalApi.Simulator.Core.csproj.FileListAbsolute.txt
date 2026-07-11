@@ -1,0 +1,16 @@
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/bin/Debug/net10.0/TacticalApi.Simulator.Core.deps.json
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/bin/Debug/net10.0/TacticalApi.Simulator.Core.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/bin/Debug/net10.0/TacticalApi.Simulator.Core.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/bin/Debug/net10.0/TacticalApi.Simulator.Contracts.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/bin/Debug/net10.0/TacticalApi.Simulator.Contracts.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.csproj.AssemblyReference.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.GeneratedMSBuildEditorConfig.editorconfig
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.AssemblyInfoInputs.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.AssemblyInfo.cs
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.csproj.CoreCompileInputs.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.sourcelink.json
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/Tactical.7AE1AC12.Up2Date
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/refint/TacticalApi.Simulator.Core.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/TacticalApi.Simulator.Core.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/obj/Debug/net10.0/ref/TacticalApi.Simulator.Core.dll

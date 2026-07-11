@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "dgSpecHash": "1D2x93irMfo=",
+  "success": true,
+  "projectFilePath": "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj",
+  "expectedPackageFiles": [
+    "/home/flodet/.nuget/packages/google.protobuf/3.33.4/google.protobuf.3.33.4.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.aspnetcore/2.76.0/grpc.aspnetcore.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.aspnetcore.server/2.76.0/grpc.aspnetcore.server.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.aspnetcore.server.clientfactory/2.76.0/grpc.aspnetcore.server.clientfactory.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.aspnetcore.server.reflection/2.76.0/grpc.aspnetcore.server.reflection.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.aspnetcore.web/2.76.0/grpc.aspnetcore.web.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.core.api/2.76.0/grpc.core.api.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.net.client/2.76.0/grpc.net.client.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.net.clientfactory/2.76.0/grpc.net.clientfactory.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.net.common/2.76.0/grpc.net.common.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.reflection/2.76.0/grpc.reflection.2.76.0.nupkg.sha512",
+    "/home/flodet/.nuget/packages/grpc.tools/2.76.0/grpc.tools.2.76.0.nupkg.sha512"
+  ],
+  "logs": []
+}

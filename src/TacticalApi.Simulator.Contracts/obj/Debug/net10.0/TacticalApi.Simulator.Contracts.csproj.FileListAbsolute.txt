@@ -1,0 +1,13 @@
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/bin/Debug/net10.0/TacticalApi.Simulator.Contracts.deps.json
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/bin/Debug/net10.0/TacticalApi.Simulator.Contracts.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/bin/Debug/net10.0/TacticalApi.Simulator.Contracts.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.csproj.AssemblyReference.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.GeneratedMSBuildEditorConfig.editorconfig
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.AssemblyInfoInputs.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.AssemblyInfo.cs
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.csproj.CoreCompileInputs.cache
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.sourcelink.json
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/refint/TacticalApi.Simulator.Contracts.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/TacticalApi.Simulator.Contracts.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Contracts/obj/Debug/net10.0/ref/TacticalApi.Simulator.Contracts.dll

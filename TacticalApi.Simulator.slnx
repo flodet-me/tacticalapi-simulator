@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TacticalApi.Simulator.Contracts/TacticalApi.Simulator.Contracts.csproj" />
+    <Project Path="src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj" />
+    <Project Path="src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj" />
+    <Project Path="src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TacticalApi.Simulator.Tests/TacticalApi.Simulator.Tests.csproj" />
+  </Folder>
+</Solution>
