@@ -16,10 +16,10 @@
         dotnet-sdk = pkgs.dotnet-sdk_10;
       in
       {
-        devShells.default = import ./nix/shell.nix { inherit pkgs dotnet-sdk; };
+        devShells.default = import ./.nix/shell.nix { inherit pkgs dotnet-sdk; };
 
         apps = {
-            format = import ./nix/format.nix { inherit pkgs dotnet-sdk; };
+            format = import ./.nix/format.nix { inherit pkgs dotnet-sdk; };
         };
       }
     );
