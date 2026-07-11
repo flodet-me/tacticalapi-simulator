@@ -8,14 +8,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj" />
-    <ProjectReference Include="..\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj" />
+    <ProjectReference Include="..\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
+    <ProjectReference Include="..\TacticalApi.Simulator.Sources.OpenSky\TacticalApi.Simulator.Sources.OpenSky.csproj"/>
+    <ProjectReference Include="..\TacticalApi.Simulator.Sources.Synthetic\TacticalApi.Simulator.Sources.Synthetic.csproj"/>
+    <ProjectReference Include="..\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" />
-    <PackageReference Include="Grpc.AspNetCore.Server.Reflection" />
-    <PackageReference Include="Grpc.AspNetCore.Web" />
+    <PackageReference Include="Grpc.AspNetCore"/>
+    <PackageReference Include="Grpc.AspNetCore.Server.Reflection"/>
+    <PackageReference Include="Grpc.AspNetCore.Web"/>
   </ItemGroup>
 
 </Project>

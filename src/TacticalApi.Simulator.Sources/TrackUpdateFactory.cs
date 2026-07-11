@@ -15,9 +15,9 @@ public readonly record struct TrackReport(
     string? AdditionalInformation);
 
 /// <summary>
-/// Builds <see cref="UpdateSituationObject"/> messages (type Symbol) straight
-/// from track reports - the one mapping shared by all track-like sources so
-/// every source speaks the unmodified TacticalAPI update model.
+///     Builds <see cref="UpdateSituationObject" /> messages (type Symbol) straight
+///     from track reports - the one mapping shared by all track-like sources so
+///     every source speaks the unmodified TacticalAPI update model.
 /// </summary>
 public static class TrackUpdateFactory
 {
@@ -38,7 +38,7 @@ public static class TrackUpdateFactory
             ReportingTime = nowTs,
             ExpiryTime = new UpdatePropertyTimestamp
             {
-                Content = Timestamp.FromDateTimeOffset(now + timeToLive),
+                Content = Timestamp.FromDateTimeOffset(now + timeToLive)
             },
             Name = new UpdatePropertyString { Content = track.Name },
             Location = new UpdatePropertyLocation
@@ -57,31 +57,27 @@ public static class TrackUpdateFactory
                                 track.AltitudeMeters is null
                                     ? VerticalDistanceReferenceCode.Unspecified
                                     : VerticalDistanceReferenceCode.MeanSeaLevel,
-                            MeasurementCode = MeasurementCode.Gps,
+                            MeasurementCode = MeasurementCode.Gps
                         },
                         Course = track.CourseDegrees,
-                        Speed = track.SpeedMetersPerSecond,
-                    },
-                },
-            },
+                        Speed = track.SpeedMetersPerSecond
+                    }
+                }
+            }
         };
 
         if (!string.IsNullOrEmpty(symbolCode))
-        {
             symbol.SymbolIdentifier = new UpdatePropertySymbolIdentifier
             {
                 Content = new SymbolIdentifier
                 {
                     SymbolCatalog = symbolCatalog,
-                    StringIdentifier = symbolCode,
-                },
+                    StringIdentifier = symbolCode
+                }
             };
-        }
 
         if (track.AdditionalInformation is not null)
-        {
             symbol.AdditionalInformation = new UpdatePropertyString { Content = track.AdditionalInformation };
-        }
 
         return new UpdateSituationObject { Symbol = symbol };
     }

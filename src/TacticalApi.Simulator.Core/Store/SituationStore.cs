@@ -7,103 +7,66 @@ using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Identities;
 using TacticalApi.Simulator.Core.Ingest;
+using TacticalApi.Simulator.Core.Merging;
 
 namespace TacticalApi.Simulator.Core.Store;
 
 /// <summary>
-/// Runtime-only situation state. No persistence by design - restart the host
-/// and the situation is empty again.
-///
-/// Concurrency model: reads are lock-free against a ConcurrentDictionary;
-/// writes are serialized by a single gate and use copy-on-write, so any
-/// SituationObject instance handed out is never mutated afterwards and can be
-/// streamed to subscribers without cloning (a deliberate performance choice).
+///     Runtime-only situation state. No persistence by design - restart the host
+///     and the situation is empty again.
+///     Concurrency model: reads are lock-free against a ConcurrentDictionary;
+///     writes are serialized by a single gate and use copy-on-write, so any
+///     SituationObject instance handed out is never mutated afterwards and can be
+///     streamed to subscribers without cloning (a deliberate performance choice).
 /// </summary>
-public sealed class SituationStore : ISituationIngest
+public sealed class SituationStore(
+    IEnumerable<ISituationObjectMerger> mergers,
+    SituationEventBroker broker,
+    IOptionsMonitor<SimulatorOptions> options,
+    ILogger<SituationStore> logger)
+    : ISituationIngest
 {
-    private readonly ConcurrentDictionary<string, SituationObject> _objects = new();
     private readonly Dictionary<string, Timestamp> _lastReportingTime = [];
-    private readonly FrozenMergerLookup _mergers;
-    private readonly SituationEventBroker _broker;
-    private readonly IOptionsMonitor<SimulatorOptions> _options;
-    private readonly ILogger<SituationStore> _logger;
+    private readonly FrozenMergerLookup _mergers = new(mergers);
+    private readonly ConcurrentDictionary<string, SituationObject> _objects = new();
     private readonly Lock _writeGate = new();
-
-    public SituationStore(
-        IEnumerable<Merging.ISituationObjectMerger> mergers,
-        SituationEventBroker broker,
-        IOptionsMonitor<SimulatorOptions> options,
-        ILogger<SituationStore> logger)
-    {
-        _mergers = new FrozenMergerLookup(mergers);
-        _broker = broker;
-        _options = options;
-        _logger = logger;
-    }
 
     public int Count => _objects.Count;
 
-    /// <summary>Snapshot of all non-deleted objects (per GetSituationObjects contract).</summary>
-    public IReadOnlyList<SituationObject> GetSnapshot()
-    {
-        var result = new List<SituationObject>(_objects.Count);
-        foreach (var obj in _objects.Values)
-        {
-            if (obj.IsDeleted?.Content != true)
-            {
-                result.Add(obj);
-            }
-        }
-
-        return result;
-    }
-
     public IngestResult AddOrUpdate(IReadOnlyList<UpdateSituationObject> updates)
     {
-        if (updates.Count == 0)
-        {
-            return IngestResult.Ok;
-        }
+        if (updates.Count == 0) return IngestResult.Ok;
 
         var changed = new List<SituationObject>(updates.Count);
-        var maxObjects = _options.CurrentValue.Performance.MaxSituationObjects;
+        var maxObjects = options.CurrentValue.Performance.MaxSituationObjects;
 
         lock (_writeGate)
         {
             foreach (var update in updates)
             {
                 if (!_mergers.TryGet(update.TypeCase, out var merger))
-                {
                     return IngestResult.Fail(
                         $"Situation object type '{update.TypeCase}' is not supported by this simulator. " +
                         "Register an ISituationObjectMerger for it to add support.");
-                }
 
                 var identity = merger.GetIdentity(update);
                 var key = IdentityKey.TryCreate(identity);
-                if (key is null)
-                {
-                    return IngestResult.Fail("Update is missing the required identity.");
-                }
+                if (key is null) return IngestResult.Fail("Update is missing the required identity.");
 
                 var reportingTime = merger.GetReportingTime(update);
                 if (reportingTime is null)
-                {
                     return IngestResult.Fail($"Update '{key}' is missing the required reporting_time.");
-                }
 
                 var exists = _objects.TryGetValue(key, out var current);
                 if (!exists && _objects.Count >= maxObjects)
-                {
                     return IngestResult.Fail(
                         $"Object limit of {maxObjects} reached (Simulator:Performance:MaxSituationObjects).");
-                }
 
                 // Last-write-wins per object: stale updates are ignored, not errors.
                 if (_lastReportingTime.TryGetValue(key, out var last) &&
                     reportingTime.ToDateTimeOffset() < last.ToDateTimeOffset())
                 {
-                    _logger.LogDebug("Ignoring stale update for {Key}", key);
+                    logger.LogDebug("Ignoring stale update for {Key}", key);
                     continue;
                 }
 
@@ -114,20 +77,14 @@ public sealed class SituationStore : ISituationIngest
             }
         }
 
-        if (changed.Count > 0)
-        {
-            _broker.Publish(changed);
-        }
+        if (changed.Count > 0) broker.Publish(changed);
 
         return IngestResult.Ok;
     }
 
     public IngestResult Delete(IReadOnlyList<DeleteSituationObject> deletes)
     {
-        if (deletes.Count == 0)
-        {
-            return IngestResult.Ok;
-        }
+        if (deletes.Count == 0) return IngestResult.Ok;
 
         var changed = new List<SituationObject>(deletes.Count);
 
@@ -136,41 +93,41 @@ public sealed class SituationStore : ISituationIngest
             foreach (var delete in deletes)
             {
                 var key = IdentityKey.TryCreate(delete.Identity);
-                if (key is null)
-                {
-                    return IngestResult.Fail("Delete is missing the required identity.");
-                }
+                if (key is null) return IngestResult.Fail("Delete is missing the required identity.");
 
                 if (!_objects.TryGetValue(key, out var current))
-                {
                     // Deleting something unknown is a no-op, matching tolerant server behavior.
                     continue;
-                }
 
-                if (current.IsDeleted?.Content == true)
-                {
-                    continue;
-                }
+                if (current.IsDeleted?.Content == true) continue;
 
-                var meta = Merging.PropertyMerge.Meta(delete.Reporter, delete.ReportingTime);
+                var meta = PropertyMerge.Meta(delete.Reporter, delete.ReportingTime);
                 var deleted = current.Clone();
-                deleted.IsDeleted = Merging.PropertyMerge.Deleted(true, meta);
+                deleted.IsDeleted = PropertyMerge.Deleted(true, meta);
                 _objects[key] = deleted;
                 changed.Add(deleted);
             }
         }
 
-        if (changed.Count > 0)
-        {
-            _broker.Publish(changed);
-        }
+        if (changed.Count > 0) broker.Publish(changed);
 
         return IngestResult.Ok;
     }
 
+    /// <summary>Snapshot of all non-deleted objects (per GetSituationObjects contract).</summary>
+    public IReadOnlyList<SituationObject> GetSnapshot()
+    {
+        var result = new List<SituationObject>(_objects.Count);
+        foreach (var obj in _objects.Values)
+            if (obj.IsDeleted?.Content != true)
+                result.Add(obj);
+
+        return result;
+    }
+
     /// <summary>
-    /// Marks all objects whose expiry_time has passed as deleted. Called by the
-    /// expiry sweeper background service.
+    ///     Marks all objects whose expiry_time has passed as deleted. Called by the
+    ///     expiry sweeper background service.
     /// </summary>
     public int SweepExpired(DateTimeOffset now, string reporterId)
     {
@@ -179,10 +136,7 @@ public sealed class SituationStore : ISituationIngest
 
         foreach (var (_, obj) in _objects)
         {
-            if (obj.IsDeleted?.Content == true)
-            {
-                continue;
-            }
+            if (obj.IsDeleted?.Content == true) continue;
 
             var expiry = GetExpiry(obj);
             if (expiry is not null && expiry.ToDateTimeOffset() <= now)
@@ -192,49 +146,49 @@ public sealed class SituationStore : ISituationIngest
                 {
                     Identity = GetIdentity(obj),
                     Reporter = new Identity { StringIdentity = reporterId },
-                    ReportingTime = nowTs,
+                    ReportingTime = nowTs
                 });
             }
         }
 
-        if (deletes is null)
-        {
-            return 0;
-        }
+        if (deletes is null) return 0;
 
         Delete(deletes);
         return deletes.Count;
     }
 
-    private static Timestamp? GetExpiry(SituationObject obj) => obj.TypeCase switch
+    private static Timestamp? GetExpiry(SituationObject obj)
     {
-        SituationObject.TypeOneofCase.Symbol => obj.Symbol.ExpiryTime?.Content,
-        SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.ExpiryTime?.Content,
-        _ => null,
-    };
+        return obj.TypeCase switch
+        {
+            SituationObject.TypeOneofCase.Symbol => obj.Symbol.ExpiryTime?.Content,
+            SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.ExpiryTime?.Content,
+            _ => null
+        };
+    }
 
-    private static Identity? GetIdentity(SituationObject obj) => obj.TypeCase switch
+    private static Identity? GetIdentity(SituationObject obj)
     {
-        SituationObject.TypeOneofCase.Symbol => obj.Symbol.Identity,
-        SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.Identity,
-        _ => null,
-    };
+        return obj.TypeCase switch
+        {
+            SituationObject.TypeOneofCase.Symbol => obj.Symbol.Identity,
+            SituationObject.TypeOneofCase.TextDocument => obj.TextDocument.Identity,
+            _ => null
+        };
+    }
 
     /// <summary>Array-backed lookup of mergers by oneof case - O(1), allocation-free.</summary>
     private sealed class FrozenMergerLookup
     {
-        private readonly Merging.ISituationObjectMerger?[] _byCase;
+        private readonly ISituationObjectMerger?[] _byCase;
 
-        public FrozenMergerLookup(IEnumerable<Merging.ISituationObjectMerger> mergers)
+        public FrozenMergerLookup(IEnumerable<ISituationObjectMerger> mergers)
         {
-            _byCase = new Merging.ISituationObjectMerger?[16];
-            foreach (var merger in mergers)
-            {
-                _byCase[(int)merger.HandledCase] = merger;
-            }
+            _byCase = new ISituationObjectMerger?[16];
+            foreach (var merger in mergers) _byCase[(int)merger.HandledCase] = merger;
         }
 
-        public bool TryGet(UpdateSituationObject.TypeOneofCase typeCase, out Merging.ISituationObjectMerger merger)
+        public bool TryGet(UpdateSituationObject.TypeOneofCase typeCase, out ISituationObjectMerger merger)
         {
             var index = (int)typeCase;
             var found = index >= 0 && index < _byCase.Length ? _byCase[index] : null;

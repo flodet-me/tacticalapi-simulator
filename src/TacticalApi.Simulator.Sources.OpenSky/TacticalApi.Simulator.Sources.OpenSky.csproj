@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.Extensions.Http">
+      <HintPath>..\..\..\..\..\..\nix\store\hkn1ynz5fijgh7bgbyqahvv7q4mqn919-dotnet-sdk-10.0.301\share\dotnet\shared\Microsoft.AspNetCore.App\10.0.9\Microsoft.Extensions.Http.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

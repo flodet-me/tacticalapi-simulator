@@ -3,14 +3,20 @@ using Rheinmetall.TacticalApi.V0;
 
 namespace TacticalApi.Simulator.Core.Merging;
 
-/// <summary>Merge logic for <see cref="TextDocument"/> objects (messaging).</summary>
+/// <summary>Merge logic for <see cref="TextDocument" /> objects (messaging).</summary>
 public sealed class TextDocumentMerger : ISituationObjectMerger
 {
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.TextDocument;
 
-    public Identity? GetIdentity(UpdateSituationObject update) => update.TextDocument?.Identity;
+    public Identity? GetIdentity(UpdateSituationObject update)
+    {
+        return update.TextDocument?.Identity;
+    }
 
-    public Timestamp? GetReportingTime(UpdateSituationObject update) => update.TextDocument?.ReportingTime;
+    public Timestamp? GetReportingTime(UpdateSituationObject update)
+    {
+        return update.TextDocument?.ReportingTime;
+    }
 
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
@@ -20,7 +26,7 @@ public sealed class TextDocumentMerger : ISituationObjectMerger
         var doc = current?.TextDocument?.Clone() ?? new TextDocument
         {
             Identity = u.Identity?.Clone(),
-            CreationMetaData = meta,
+            CreationMetaData = meta
         };
 
         doc.ExpiryTime = PropertyMerge.Time(doc.ExpiryTime, u.ExpiryTime, meta);
@@ -37,7 +43,7 @@ public sealed class TextDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             TextDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta),
+            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
         };
     }
 }

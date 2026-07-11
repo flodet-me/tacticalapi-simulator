@@ -13,7 +13,7 @@ public sealed class SituationStoreTests
     {
         var store = TestHelpers.CreateStore();
 
-        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, name: "ALPHA", latitude: 53.0, longitude: 8.8)]);
+        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, "ALPHA", 53.0, 8.8)]);
 
         Assert.True(result.Success);
         var snapshot = store.GetSnapshot();
@@ -27,7 +27,7 @@ public sealed class SituationStoreTests
     public void AddOrUpdate_MergesOnlyProvidedProperties()
     {
         var store = TestHelpers.CreateStore();
-        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, name: "ALPHA", latitude: 53.0, longitude: 8.8)]);
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, "ALPHA", 53.0, 8.8)]);
 
         // Second update moves the track but does not touch the name.
         store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(5), latitude: 54.0, longitude: 9.0)]);
@@ -41,9 +41,9 @@ public sealed class SituationStoreTests
     public void AddOrUpdate_IgnoresStaleUpdates()
     {
         var store = TestHelpers.CreateStore();
-        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, name: "NEW")]);
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, "NEW")]);
 
-        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(-30), name: "STALE")]);
+        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(-30), "STALE")]);
 
         Assert.True(result.Success);
         var obj = Assert.Single(store.GetSnapshot());
@@ -84,7 +84,7 @@ public sealed class SituationStoreTests
         Assert.False(store.AddOrUpdate([TestHelpers.SymbolUpdate("track-2", T0)]).Success);
 
         // Updating an existing object must still work at the limit.
-        Assert.True(store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(1), name: "STILL-OK")]).Success);
+        Assert.True(store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(1), "STILL-OK")]).Success);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class SituationStoreTests
         var store = TestHelpers.CreateStore();
         store.AddOrUpdate([
             TestHelpers.SymbolUpdate("expired", T0, expiry: T0.AddSeconds(10)),
-            TestHelpers.SymbolUpdate("alive", T0, expiry: T0.AddHours(1)),
+            TestHelpers.SymbolUpdate("alive", T0, expiry: T0.AddHours(1))
         ]);
 
         var swept = store.SweepExpired(T0.AddMinutes(1), "SWEEPER");

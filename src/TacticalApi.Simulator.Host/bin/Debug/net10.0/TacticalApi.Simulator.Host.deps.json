@@ -12,7 +12,9 @@
           "Grpc.AspNetCore.Server.Reflection": "2.76.0",
           "Grpc.AspNetCore.Web": "2.76.0",
           "TacticalApi.Simulator.Core": "1.0.0",
-          "TacticalApi.Simulator.Sources": "1.0.0"
+          "TacticalApi.Simulator.Sources": "1.0.0",
+          "TacticalApi.Simulator.Sources.OpenSky": "1.0.0",
+          "TacticalApi.Simulator.Sources.Synthetic": "1.0.0"
         },
         "runtime": {
           "TacticalApi.Simulator.Host.dll": {}
@@ -162,6 +164,28 @@
             "fileVersion": "1.0.0.0"
           }
         }
+      },
+      "TacticalApi.Simulator.Sources.OpenSky/1.0.0": {
+        "dependencies": {
+          "TacticalApi.Simulator.Sources": "1.0.0"
+        },
+        "runtime": {
+          "TacticalApi.Simulator.Sources.OpenSky.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "TacticalApi.Simulator.Sources.Synthetic/1.0.0": {
+        "dependencies": {
+          "TacticalApi.Simulator.Sources": "1.0.0"
+        },
+        "runtime": {
+          "TacticalApi.Simulator.Sources.Synthetic.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
       }
     }
   },
@@ -259,6 +283,16 @@
       "sha512": ""
     },
     "TacticalApi.Simulator.Sources/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "TacticalApi.Simulator.Sources.OpenSky/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "TacticalApi.Simulator.Sources.Synthetic/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

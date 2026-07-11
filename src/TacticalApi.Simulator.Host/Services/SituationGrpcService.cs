@@ -9,17 +9,17 @@ using TacticalApi.Simulator.Core.Store;
 namespace TacticalApi.Simulator.Host.Services;
 
 /// <summary>
-/// gRPC implementation of rheinmetall.tactical_api.v0.Situation. Thin layer:
-/// all state handling lives in the core; this class only translates between
-/// RPC messages and the store/broker.
+///     gRPC implementation of rheinmetall.tactical_api.v0.Situation. Thin layer:
+///     all state handling lives in the core; this class only translates between
+///     RPC messages and the store/broker.
 /// </summary>
 public sealed class SituationGrpcService : Situation.SituationBase
 {
-    private readonly SituationStore _store;
     private readonly SituationEventBroker _broker;
     private readonly ISituationIngest _ingest;
-    private readonly IOptionsMonitor<SimulatorOptions> _options;
     private readonly ILogger<SituationGrpcService> _logger;
+    private readonly IOptionsMonitor<SimulatorOptions> _options;
+    private readonly SituationStore _store;
 
     public SituationGrpcService(
         SituationStore store,
@@ -40,7 +40,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
     {
         var response = new GetSituationObjectsResponse
         {
-            Header = new ResponseHeader { Success = true },
+            Header = new ResponseHeader { Success = true }
         };
         response.SituationObjects.AddRange(_store.GetSnapshot());
         return Task.FromResult(response);
@@ -79,9 +79,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         {
             var response = CreateResponse();
             for (var i = offset; i < Math.Min(offset + batchSize, snapshot.Count); i++)
-            {
                 response.SituationObjects.Add(snapshot[i]);
-            }
 
             await responseStream.WriteAsync(response, context.CancellationToken).ConfigureAwait(false);
         }
@@ -95,9 +93,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
             {
                 var response = CreateResponse();
                 while (response.SituationObjects.Count < batchSize && reader.TryRead(out var obj))
-                {
                     response.SituationObjects.Add(obj);
-                }
 
                 await responseStream.WriteAsync(response, context.CancellationToken).ConfigureAwait(false);
             }
@@ -112,8 +108,11 @@ public sealed class SituationGrpcService : Situation.SituationBase
         }
     }
 
-    private static SubscribeSituationObjectEventsResponse CreateResponse() => new()
+    private static SubscribeSituationObjectEventsResponse CreateResponse()
     {
-        Header = new ResponseHeader { Success = true },
-    };
+        return new SubscribeSituationObjectEventsResponse
+        {
+            Header = new ResponseHeader { Success = true }
+        };
+    }
 }

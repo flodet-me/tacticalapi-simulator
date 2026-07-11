@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 3,
   "targets": {
     "net10.0": {
       "coverlet.collector/6.0.4": {
@@ -786,6 +786,32 @@
         },
         "runtime": {
           "bin/placeholder/TacticalApi.Simulator.Sources.dll": {}
+        }
+      },
+      "TacticalApi.Simulator.Sources.OpenSky/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "TacticalApi.Simulator.Sources": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/TacticalApi.Simulator.Sources.OpenSky.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/TacticalApi.Simulator.Sources.OpenSky.dll": {}
+        }
+      },
+      "TacticalApi.Simulator.Sources.Synthetic/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "dependencies": {
+          "TacticalApi.Simulator.Sources": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/TacticalApi.Simulator.Sources.Synthetic.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/TacticalApi.Simulator.Sources.Synthetic.dll": {}
         }
       }
     }
@@ -1900,6 +1926,16 @@
       "type": "project",
       "path": "../../src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj",
       "msbuildProject": "../../src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj"
+    },
+    "TacticalApi.Simulator.Sources.OpenSky/1.0.0": {
+      "type": "project",
+      "path": "../../src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj",
+      "msbuildProject": "../../src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj"
+    },
+    "TacticalApi.Simulator.Sources.Synthetic/1.0.0": {
+      "type": "project",
+      "path": "../../src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj",
+      "msbuildProject": "../../src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj"
     }
   },
   "projectFileDependencyGroups": {
@@ -1907,6 +1943,8 @@
       "Microsoft.NET.Test.Sdk >= 17.14.1",
       "TacticalApi.Simulator.Core >= 1.0.0",
       "TacticalApi.Simulator.Sources >= 1.0.0",
+      "TacticalApi.Simulator.Sources.OpenSky >= 1.0.0",
+      "TacticalApi.Simulator.Sources.Synthetic >= 1.0.0",
       "coverlet.collector >= 6.0.4",
       "xunit >= 2.9.3",
       "xunit.runner.visualstudio >= 3.1.0"
@@ -1938,11 +1976,16 @@
       },
       "frameworks": {
         "net10.0": {
-          "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
             "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj": {
               "projectPath": "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj"
+            },
+            "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj": {
+              "projectPath": "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj"
+            },
+            "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj": {
+              "projectPath": "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj"
             },
             "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj": {
               "projectPath": "/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj"
@@ -1965,7 +2008,6 @@
     },
     "frameworks": {
       "net10.0": {
-        "framework": "net10.0",
         "targetAlias": "net10.0",
         "dependencies": {
           "Microsoft.NET.Test.Sdk": {

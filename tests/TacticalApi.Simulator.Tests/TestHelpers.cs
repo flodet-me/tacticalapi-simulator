@@ -12,7 +12,9 @@ namespace TacticalApi.Simulator.Tests;
 internal static class TestHelpers
 {
     internal static IOptionsMonitor<SimulatorOptions> Options(SimulatorOptions? options = null)
-        => new StaticOptionsMonitor(options ?? new SimulatorOptions());
+    {
+        return new StaticOptionsMonitor(options ?? new SimulatorOptions());
+    }
 
     internal static SituationStore CreateStore(SimulatorOptions? options = null, SituationEventBroker? broker = null)
     {
@@ -36,16 +38,12 @@ internal static class TestHelpers
         {
             Identity = new Identity { StringIdentity = id },
             Reporter = new Identity { StringIdentity = "TEST" },
-            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime),
+            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
         };
 
-        if (name is not null)
-        {
-            symbol.Name = new UpdatePropertyString { Content = name };
-        }
+        if (name is not null) symbol.Name = new UpdatePropertyString { Content = name };
 
         if (latitude is not null && longitude is not null)
-        {
             symbol.Location = new UpdatePropertyLocation
             {
                 Content = new SymbolLocation
@@ -55,37 +53,43 @@ internal static class TestHelpers
                         GeoPoint = new GeoPoint
                         {
                             LatitudeCoordinate = latitude.Value,
-                            LongitudeCoordinate = longitude.Value,
-                        },
-                    },
-                },
+                            LongitudeCoordinate = longitude.Value
+                        }
+                    }
+                }
             };
-        }
 
         if (expiry is not null)
-        {
             symbol.ExpiryTime = new UpdatePropertyTimestamp
             {
-                Content = Timestamp.FromDateTimeOffset(expiry.Value),
+                Content = Timestamp.FromDateTimeOffset(expiry.Value)
             };
-        }
 
         return new UpdateSituationObject { Symbol = symbol };
     }
 
-    internal static DeleteSituationObject Delete(string id, DateTimeOffset reportingTime) => new()
+    internal static DeleteSituationObject Delete(string id, DateTimeOffset reportingTime)
     {
-        Identity = new Identity { StringIdentity = id },
-        Reporter = new Identity { StringIdentity = "TEST" },
-        ReportingTime = Timestamp.FromDateTimeOffset(reportingTime),
-    };
+        return new DeleteSituationObject
+        {
+            Identity = new Identity { StringIdentity = id },
+            Reporter = new Identity { StringIdentity = "TEST" },
+            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
+        };
+    }
 
     private sealed class StaticOptionsMonitor(SimulatorOptions value) : IOptionsMonitor<SimulatorOptions>
     {
         public SimulatorOptions CurrentValue => value;
 
-        public SimulatorOptions Get(string? name) => value;
+        public SimulatorOptions Get(string? name)
+        {
+            return value;
+        }
 
-        public IDisposable? OnChange(Action<SimulatorOptions, string?> listener) => null;
+        public IDisposable? OnChange(Action<SimulatorOptions, string?> listener)
+        {
+            return null;
+        }
     }
 }

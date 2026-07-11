@@ -4,16 +4,22 @@ using Rheinmetall.TacticalApi.V0;
 namespace TacticalApi.Simulator.Core.Merging;
 
 /// <summary>
-/// Merge logic for <see cref="Symbol"/> objects (map symbols / tracks) -
-/// the primary type for simulated air and naval tracks.
+///     Merge logic for <see cref="Symbol" /> objects (map symbols / tracks) -
+///     the primary type for simulated air and naval tracks.
 /// </summary>
 public sealed class SymbolMerger : ISituationObjectMerger
 {
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.Symbol;
 
-    public Identity? GetIdentity(UpdateSituationObject update) => update.Symbol?.Identity;
+    public Identity? GetIdentity(UpdateSituationObject update)
+    {
+        return update.Symbol?.Identity;
+    }
 
-    public Timestamp? GetReportingTime(UpdateSituationObject update) => update.Symbol?.ReportingTime;
+    public Timestamp? GetReportingTime(UpdateSituationObject update)
+    {
+        return update.Symbol?.ReportingTime;
+    }
 
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
@@ -24,13 +30,14 @@ public sealed class SymbolMerger : ISituationObjectMerger
         var symbol = current?.Symbol?.Clone() ?? new Symbol
         {
             Identity = u.Identity?.Clone(),
-            CreationMetaData = meta,
+            CreationMetaData = meta
         };
 
         symbol.ExpiryTime = PropertyMerge.Time(symbol.ExpiryTime, u.ExpiryTime, meta);
         symbol.Location = PropertyMerge.Location(symbol.Location, u.Location, meta);
         symbol.Name = PropertyMerge.String(symbol.Name, u.Name, meta);
-        symbol.AdditionalInformation = PropertyMerge.String(symbol.AdditionalInformation, u.AdditionalInformation, meta);
+        symbol.AdditionalInformation =
+            PropertyMerge.String(symbol.AdditionalInformation, u.AdditionalInformation, meta);
         symbol.SymbolIdentifier = PropertyMerge.SymbolId(symbol.SymbolIdentifier, u.SymbolIdentifier, meta);
         symbol.HigherFormation = PropertyMerge.String(symbol.HigherFormation, u.HigherFormation, meta);
         symbol.Reinforcement = PropertyMerge.Reinforcement(symbol.Reinforcement, u.Reinforcement, meta);
@@ -45,7 +52,7 @@ public sealed class SymbolMerger : ISituationObjectMerger
         return new SituationObject
         {
             Symbol = symbol,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta),
+            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
         };
     }
 }

@@ -43,8 +43,14 @@ public sealed class SyntheticAirTrackSourceTests
     {
         public SyntheticAirTrackOptions CurrentValue => value;
 
-        public SyntheticAirTrackOptions Get(string? name) => value;
+        public SyntheticAirTrackOptions Get(string? name)
+        {
+            return value;
+        }
 
-        public IDisposable? OnChange(Action<SyntheticAirTrackOptions, string?> listener) => null;
+        public IDisposable? OnChange(Action<SyntheticAirTrackOptions, string?> listener)
+        {
+            return null;
+        }
     }
 }

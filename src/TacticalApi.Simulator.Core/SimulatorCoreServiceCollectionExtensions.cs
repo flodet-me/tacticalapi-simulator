@@ -28,7 +28,7 @@ public static class SimulatorCoreServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a simulation source together with its dedicated runner.
+    ///     Registers a simulation source together with its dedicated runner.
     /// </summary>
     public static IServiceCollection AddSimulationSource<TSource>(this IServiceCollection services)
         where TSource : class, ISimulationSource

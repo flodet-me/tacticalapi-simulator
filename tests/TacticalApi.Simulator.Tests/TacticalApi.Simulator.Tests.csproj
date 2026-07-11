@@ -5,15 +5,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj" />
-    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj" />
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.OpenSky\TacticalApi.Simulator.Sources.OpenSky.csproj"/>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.Synthetic\TacticalApi.Simulator.Sources.Synthetic.csproj"/>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="coverlet.collector" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="xunit"/>
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all"/>
   </ItemGroup>
 
 </Project>

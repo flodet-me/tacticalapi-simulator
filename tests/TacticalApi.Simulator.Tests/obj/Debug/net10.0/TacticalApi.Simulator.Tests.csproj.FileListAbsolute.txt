@@ -120,3 +120,7 @@
 /home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/obj/Debug/net10.0/TacticalApi.Simulator.Tests.pdb
 /home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/obj/Debug/net10.0/TacticalApi.Simulator.Tests.genruntimeconfig.cache
 /home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/obj/Debug/net10.0/ref/TacticalApi.Simulator.Tests.dll
+/home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/bin/Debug/net10.0/TacticalApi.Simulator.Sources.OpenSky.dll
+/home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/bin/Debug/net10.0/TacticalApi.Simulator.Sources.Synthetic.dll
+/home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/bin/Debug/net10.0/TacticalApi.Simulator.Sources.OpenSky.pdb
+/home/flodet/Projects/tacticalapi-simulator/tests/TacticalApi.Simulator.Tests/bin/Debug/net10.0/TacticalApi.Simulator.Sources.Synthetic.pdb

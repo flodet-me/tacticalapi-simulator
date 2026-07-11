@@ -45,3 +45,7 @@
 /home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/obj/Debug/net10.0/TacticalApi.Simulator.Host.pdb
 /home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/obj/Debug/net10.0/TacticalApi.Simulator.Host.genruntimeconfig.cache
 /home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/obj/Debug/net10.0/ref/TacticalApi.Simulator.Host.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/bin/Debug/net10.0/TacticalApi.Simulator.Sources.OpenSky.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/bin/Debug/net10.0/TacticalApi.Simulator.Sources.Synthetic.dll
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/bin/Debug/net10.0/TacticalApi.Simulator.Sources.OpenSky.pdb
+/home/flodet/Projects/tacticalapi-simulator/src/TacticalApi.Simulator.Host/bin/Debug/net10.0/TacticalApi.Simulator.Sources.Synthetic.pdb

@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Options;
 using TacticalApi.Simulator.Core;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Events;
+using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
-using TacticalApi.Simulator.Sources;
+using TacticalApi.Simulator.Sources.OpenSky;
+using TacticalApi.Simulator.Sources.Synthetic;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,7 +27,8 @@ builder.Services.AddGrpc(options =>
 builder.Services.AddGrpcReflection();
 
 builder.Services.AddSimulatorCore();
-builder.Services.AddBundledSimulationSources(builder.Configuration);
+builder.Services.AddOpenSkySources(builder.Configuration);
+builder.Services.AddSyntheticSources(builder.Configuration);
 
 var app = builder.Build();
 
@@ -34,15 +38,15 @@ app.UseGrpcWeb(new GrpcWebOptions { DefaultEnabled = true });
 
 app.MapGrpcService<SituationGrpcService>().EnableGrpcWeb();
 app.MapGrpcReflectionService();
-app.MapGet("/", (TacticalApi.Simulator.Core.Store.SituationStore store,
-                 TacticalApi.Simulator.Core.Events.SituationEventBroker broker,
-                 IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
+app.MapGet("/", (SituationStore store,
+    SituationEventBroker broker,
+    IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
 {
     service = "TacticalAPI Simulator",
     proto = "rheinmetall.tactical_api.v0.Situation",
     situationObjects = store.Count,
     subscribers = broker.SubscriberCount,
-    reporterId = options.CurrentValue.ReporterId,
+    reporterId = options.CurrentValue.ReporterId
 }));
 
 app.Run();
