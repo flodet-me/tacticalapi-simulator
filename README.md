@@ -143,4 +143,9 @@ dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 
 ## CI
 
-`.github/workflows/dotnet.yml`: restore → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → publish the host as a downloadable artifact → build (but not push) a Docker image tagged with that same version, using the `Dockerfile` at the repo root. NuGet packages are cached.
+`.github/workflows/dotnet.yml` runs two jobs in parallel:
+
+- `format-check`: `dotnet format --verify-no-changes` — fails fast on style/formatting drift without waiting on the full build.
+- `build-and-test`: restore → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → publish the host as a downloadable artifact → build (but not push) a Docker image tagged with that same version, using the `Dockerfile` at the repo root.
+
+NuGet packages are cached in both jobs.
