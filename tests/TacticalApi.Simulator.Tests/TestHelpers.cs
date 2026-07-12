@@ -114,57 +114,57 @@ internal static class TestHelpers
             SituationObject.TypeOneofCase.Symbol => new UpdateSituationObject
             {
                 Symbol = new UpdateSymbol
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.TextDocument => new UpdateSituationObject
             {
                 TextDocument = new UpdateTextDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.ActionTask => new UpdateSituationObject
             {
                 ActionTask = new UpdateActionTask
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.ActionEvent => new UpdateSituationObject
             {
                 ActionEvent = new UpdateActionEvent
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.OrganizationUnit => new UpdateSituationObject
             {
                 OrganizationUnit = new UpdateOrganizationUnit
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.Route => new UpdateSituationObject
             {
                 Route = new UpdateRoute
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.PictureDocument => new UpdateSituationObject
             {
                 PictureDocument = new UpdatePictureDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.VoiceMessageDocument => new UpdateSituationObject
             {
                 VoiceMessageDocument = new UpdateVoiceMessageDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.NatoMessageDocument => new UpdateSituationObject
             {
                 NatoMessageDocument = new UpdateNatoMessageDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.OverlayDocument => new UpdateSituationObject
             {
                 OverlayDocument = new UpdateOverlayDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             SituationObject.TypeOneofCase.SketchDocument => new UpdateSituationObject
             {
                 SketchDocument = new UpdateSketchDocument
-                    { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
+                { Identity = identity, Reporter = reporter, ReportingTime = time, ExpiryTime = expiryProperty }
             },
             _ => throw new ArgumentOutOfRangeException(nameof(typeCase), typeCase,
                 "No expirable update builder for this type.")

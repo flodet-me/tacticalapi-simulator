@@ -168,7 +168,7 @@ public sealed class SyntheticScenarioSource(
                 Location = new UpdatePropertyLocation { Content = new SymbolLocation { Line = line } },
                 MarchSpeed = new UpdatePropertyInt { Content = 40 },
                 LineColor = new UpdatePropertyColor
-                    { Content = new Color { Red = 0, Green = 128, Blue = 255, Alpha = 255 } },
+                { Content = new Color { Red = 0, Green = 128, Blue = 255, Alpha = 255 } },
                 LineWidth = new UpdatePropertyInt { Content = 3 },
                 LineStyle = new UpdatePropertyLineStyle { Content = LineStyle.Dash },
                 RouteType = new UpdatePropertyRouteType { Content = RouteType.MainSupplyRoute }
@@ -233,7 +233,7 @@ public sealed class SyntheticScenarioSource(
             ReportingTime = nowTs,
             Name = new UpdatePropertyString { Content = "Patrol route BRAVO" },
             AdditionalInformation = new UpdatePropertyString
-                { Content = "Recon patrol along route BRAVO, report all activity" },
+            { Content = "Recon patrol along route BRAVO, report all activity" },
             ActionTaskType = new UpdatePropertyActionTask { Content = ActionTaskType.Reconnaissance },
             ActionTaskStatus = new UpdatePropertyActionTaskStatus { Content = status },
             ActionTaskPriority =
@@ -241,7 +241,7 @@ public sealed class SyntheticScenarioSource(
             CompletionRatio = new UpdatePropertyInt { Content = (int)(lapFraction * 100) },
             PlannedStartTime = new UpdatePropertyTimestamp { Content = Timestamp.FromDateTimeOffset(_epoch) },
             PlannedEndTime = new UpdatePropertyTimestamp
-                { Content = Timestamp.FromDateTimeOffset(_epoch + o.PatrolLapDuration) },
+            { Content = Timestamp.FromDateTimeOffset(_epoch + o.PatrolLapDuration) },
             Location = new UpdatePropertyLocation
             {
                 Content = new SymbolLocation
@@ -250,7 +250,7 @@ public sealed class SyntheticScenarioSource(
                     {
                         LocationTime = nowTs,
                         GeoPoint = new GeoPoint
-                            { LatitudeCoordinate = waypoints[0].Lat, LongitudeCoordinate = waypoints[0].Lon }
+                        { LatitudeCoordinate = waypoints[0].Lat, LongitudeCoordinate = waypoints[0].Lon }
                     }
                 }
             }
@@ -289,12 +289,12 @@ public sealed class SyntheticScenarioSource(
                 Reporter = reporter,
                 ReportingTime = nowTs,
                 ExpiryTime = new UpdatePropertyTimestamp
-                    { Content = Timestamp.FromDateTimeOffset(now + o.EventTimeToLive) },
+                { Content = Timestamp.FromDateTimeOffset(now + o.EventTimeToLive) },
                 Name = new UpdatePropertyString { Content = incident.Name },
                 ActionEventType = new UpdatePropertyActionEvent { Content = incident.Type },
                 ThreatLevel = new UpdatePropertyInt { Content = incident.Threat },
                 DetectionDescription = new UpdatePropertyString
-                    { Content = $"Reported by PATROL 1 near route BRAVO ({incident.Name.ToLowerInvariant()})" },
+                { Content = $"Reported by PATROL 1 near route BRAVO ({incident.Name.ToLowerInvariant()})" },
                 Location = new UpdatePropertyLocation
                 {
                     Content = new SymbolLocation
@@ -374,11 +374,11 @@ public sealed class SyntheticScenarioSource(
                 ReportingTime = nowTs,
                 Name = new UpdatePropertyString { Content = "Recon photo WP2" },
                 AdditionalInformation = new UpdatePropertyString
-                    { Content = "Bridge at waypoint 2, structurally intact" },
+                { Content = "Bridge at waypoint 2, structurally intact" },
                 PictureData =
                     new UpdatePropertyByteArray { Content = ByteString.CopyFrom(TinyPng), Type = "image/png" },
                 LowResPictureData = new UpdatePropertyByteArray
-                    { Content = ByteString.CopyFrom(TinyPng), Type = "image/png" },
+                { Content = ByteString.CopyFrom(TinyPng), Type = "image/png" },
                 DirectionOfView = new UpdatePropertyInt { Content = 135 },
                 FocalLength = new UpdatePropertyInt { Content = 50 },
                 MessageCategory = new UpdatePropertyMessageCategory { Content = MessageCategoryType.Operational },

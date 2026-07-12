@@ -97,4 +97,39 @@ public sealed class RouteMergerTests
         Assert.Equal(2, sameTime.Route.LineWidth.Content);
         Assert.Equal(2, olderTime.Route.LineWidth.Content);
     }
+
+    [Fact]
+    public void Merge_KeepsPropertyMetadataWhenContentUnchangedDespiteNewerTime()
+    {
+        // Arrange
+        var (reporter, time) = TestHelpers.Meta(T0);
+        var merger = new RouteMerger();
+        var created = merger.Merge(null, new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "r1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                LineWidth = new UpdatePropertyInt { Content = 2 }
+            }
+        });
+
+        // Act: strictly newer reporting time, but the same LineWidth value.
+        var merged = merger.Merge(created, new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "r1" },
+                Reporter = reporter,
+                ReportingTime = Timestamp.FromDateTimeOffset(T0.AddMinutes(1)),
+                LineWidth = new UpdatePropertyInt { Content = 2 }
+            }
+        });
+
+        // Assert: value is unchanged and its CreationMetaData was NOT bumped to
+        // the newer time - an unchanged property is left completely untouched.
+        Assert.Equal(2, merged.Route.LineWidth.Content);
+        Assert.Equal(time, merged.Route.LineWidth.CreationMetaData.CreationTime);
+    }
 }
