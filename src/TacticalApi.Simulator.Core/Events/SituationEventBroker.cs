@@ -39,15 +39,15 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
         if (_subscribers.IsEmpty) return;
 
         foreach (var (_, channel) in _subscribers)
-        foreach (var obj in changed)
-            // With DropOldest/DropWrite this never blocks; with Wait mode a
-            // full channel makes TryWrite fail and we fall back to a
-            // blocking write to apply backpressure to the publisher.
-            if (!channel.Writer.TryWrite(obj))
-            {
-                var writeTask = channel.Writer.WriteAsync(obj);
-                if (!writeTask.IsCompletedSuccessfully) writeTask.AsTask().GetAwaiter().GetResult();
-            }
+            foreach (var obj in changed)
+                // With DropOldest/DropWrite this never blocks; with Wait mode a
+                // full channel makes TryWrite fail and we fall back to a
+                // blocking write to apply backpressure to the publisher.
+                if (!channel.Writer.TryWrite(obj))
+                {
+                    var writeTask = channel.Writer.WriteAsync(obj);
+                    if (!writeTask.IsCompletedSuccessfully) writeTask.AsTask().GetAwaiter().GetResult();
+                }
     }
 
     private void Unsubscribe(Guid id)

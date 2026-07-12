@@ -9,6 +9,10 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <InvariantGlobalization>true</InvariantGlobalization>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <!-- Always emit PDBs (portable, cross-platform) so build/publish/Docker
+         outputs are debuggable, regardless of configuration. -->
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
     <!-- Base semantic version. CI appends a VersionSuffix (run number + commit
          sha) so every pipeline run produces a unique, traceable version. -->
     <VersionPrefix>0.1.0</VersionPrefix>
