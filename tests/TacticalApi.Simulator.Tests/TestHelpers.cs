@@ -24,6 +24,12 @@ internal static class TestHelpers
         return new StaticOptionsMonitor<T>(value);
     }
 
+    /// <summary>Reporter/reporting-time pair shared by every merger test's Arrange step.</summary>
+    internal static (Identity Reporter, Timestamp Time) Meta(DateTimeOffset reportingTime)
+    {
+        return (new Identity { StringIdentity = TestReporterId }, Timestamp.FromDateTimeOffset(reportingTime));
+    }
+
     internal static SituationStore CreateStore(SimulatorOptions? options = null, SituationEventBroker? broker = null)
     {
         var monitor = Options(options);
