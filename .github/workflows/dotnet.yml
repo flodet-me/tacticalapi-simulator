@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (including TacticalAPI submodule)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Pulls external/tacticalapi (Rheinmetall/tacticalapi) at the
           # commit pinned in this repository.
@@ -31,12 +31,12 @@ jobs:
         run: test -f external/tacticalapi/rheinmetall/tactical_api/v0/situation_service.proto
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
@@ -76,7 +76,7 @@ jobs:
           EOF
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coveragereport
@@ -86,7 +86,7 @@ jobs:
         run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish
 
       - name: Upload host artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tacticalapi-simulator
           path: ./publish
@@ -99,7 +99,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
@@ -108,7 +108,7 @@ jobs:
         run: git submodule update --init --remote external/tacticalapi
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
