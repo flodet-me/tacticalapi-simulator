@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(yq eval *)"
+      "Bash(yq eval *)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(xargs cat)"
     ]
   }
 }

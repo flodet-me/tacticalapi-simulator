@@ -145,7 +145,14 @@ jobs:
           for component in bom.get("components", []):
               label = f"{component['name']}@{component['version']}"
               licenses = component.get("licenses", [])
-              ids = [entry["license"].get("id") or entry["license"].get("name") for entry in licenses]
+              # CycloneDX allows two shapes per entry: a discrete {"license": {...}}
+              # or an SPDX {"expression": "..."}; only the former has an "id"/"name".
+              ids = []
+              for entry in licenses:
+                  if "license" in entry:
+                      ids.append(entry["license"].get("id") or entry["license"].get("name"))
+                  elif "expression" in entry:
+                      ids.append(entry["expression"])
               if not ids:
                   violations.append(f"{label}: no license metadata")
               elif not any(lic in ALLOWED for lic in ids):
@@ -177,12 +184,28 @@ jobs:
           --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
           .
 
+      - name: Get current date for Trivy DB cache key
+        id: date
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/trivy-cache
+          # Trivy does a delta update against whatever DB is already present
+          # in this dir, so a same-day cache hit skips the ~100-200MB full
+          # download; restore-keys falls back to the latest older cache
+          # (still much cheaper than downloading from scratch) on a miss.
+          key: trivy-db-${{ steps.date.outputs.date }}
+          restore-keys: trivy-db-
+
       - name: Scan Docker image for vulnerabilities
         run: |
           # Official Trivy image straight from Docker Hub, scanning the local
           # image via the mounted Docker socket - no GitHub API, no token.
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ runner.temp }}/trivy-cache:/root/.cache/trivy \
             aquasec/trivy:latest image \
             --severity CRITICAL,HIGH \
             --ignore-unfixed \
@@ -198,6 +221,7 @@ jobs:
           # disagree on paths under act's nested-container setup.
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ runner.temp }}/trivy-cache:/root/.cache/trivy \
             aquasec/trivy:latest image \
             --format cyclonedx \
             tacticalapi-simulator:${{ steps.version.outputs.image_tag }} \
