@@ -16,5 +16,11 @@
     <!-- Base semantic version. CI appends a VersionSuffix (run number + commit
          sha) so every pipeline run produces a unique, traceable version. -->
     <VersionPrefix>0.1.0</VersionPrefix>
+    <!-- NuGet's built-in vulnerability audit (restore-time) only checks direct
+         PackageReferences by default; extend it to transitive dependencies
+         too. TreatWarningsAsErrors above means a detected vulnerability
+         already fails the build, not just CI's separate "Vulnerability scan"
+         step. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 </Project>

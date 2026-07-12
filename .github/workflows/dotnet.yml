@@ -84,6 +84,7 @@ jobs:
       - name: Merge coverage reports
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.10
+          export PATH="$PATH:$HOME/.dotnet/tools"
           reportgenerator \
             -reports:"coverage/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
@@ -123,6 +124,107 @@ jobs:
           --build-arg VERSION=${{ steps.version.outputs.full_version }}
           --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
           .
+
+      - name: Scan Docker image for vulnerabilities
+        run: |
+          # Official Trivy image straight from Docker Hub, scanning the local
+          # image via the mounted Docker socket - no GitHub API, no token.
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 1 \
+            tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+
+  # SBOM (CycloneDX) for what's actually shipped - the Host + its Sources.*
+  # dependencies, excluding dev/test-only tooling - plus a license allow-list
+  # gate so a new dependency with an incompatible license fails CI instead of
+  # being noticed later.
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (including TacticalAPI submodule)
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-env
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Scan for vulnerable NuGet packages
+        run: |
+          # NuGetAuditMode=all (Directory.Build.props) already fails restore/build
+          # on a detected vulnerability via TreatWarningsAsErrors; this step gives
+          # it a dedicated, readable report instead of a buried build warning.
+          dotnet list package --vulnerable --include-transitive | tee vulnerable-packages.txt
+          if grep -q "has the following vulnerable packages" vulnerable-packages.txt; then
+            echo "::error::Vulnerable NuGet package(s) detected - see the report above."
+            exit 1
+          fi
+          echo "No vulnerable NuGet packages found."
+
+      - name: Compute build version
+        id: version
+        run: |
+          # Directory.Build.props is the single source of truth for the base
+          # version; CI only appends the run number + commit sha.
+          version_prefix=$(dotnet msbuild src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj -getProperty:VersionPrefix)
+          short_sha="${GITHUB_SHA::7}"
+          artifact_suffix="${{ github.run_number }}-${short_sha}"
+          echo "artifact_suffix=${artifact_suffix}" >> "$GITHUB_OUTPUT"
+          echo "full_version=${version_prefix}-${artifact_suffix}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          dotnet tool install --global CycloneDX --version 6.2.0
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet-CycloneDX TacticalApi.Simulator.slnx \
+            --exclude-test-projects \
+            --set-version "${{ steps.version.outputs.full_version }}" \
+            --output-format Json \
+            --output .
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-${{ steps.version.outputs.artifact_suffix }}
+          path: bom.json
+
+      - name: Enforce license allow-list
+        run: |
+          python3 - <<'EOF'
+          import json
+          import sys
+
+          ALLOWED = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "0BSD"}
+
+          with open("bom.json") as f:
+              bom = json.load(f)
+
+          violations = []
+          for component in bom.get("components", []):
+              label = f"{component['name']}@{component['version']}"
+              licenses = component.get("licenses", [])
+              ids = [entry["license"].get("id") or entry["license"].get("name") for entry in licenses]
+              if not ids:
+                  violations.append(f"{label}: no license metadata")
+              elif not any(lic in ALLOWED for lic in ids):
+                  violations.append(f"{label}: disallowed license(s) {ids}")
+
+          component_count = len(bom.get("components", []))
+          if violations:
+              print(f"License check FAILED ({len(violations)} of {component_count} components):")
+              for v in violations:
+                  print(f"  - {v}")
+              sys.exit(1)
+
+          print(f"License check passed: {component_count} components, all within {sorted(ALLOWED)}.")
+          EOF
 
   # Builds against the LATEST upstream TacticalAPI contract (submodule moved
   # to origin/main) without committing anything. Fails when an upstream proto
