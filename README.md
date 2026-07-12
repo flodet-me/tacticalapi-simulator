@@ -128,6 +128,19 @@ services.AddSingleton<ISituationObjectMerger, RouteMerger>();
 
 The store discovers mergers by their `HandledCase`; no other change needed.
 
+## Testing
+
+Two test layers, both run by `dotnet test`:
+
+- **Unit tests** (`TacticalApi.Simulator.Tests`) cover the store semantics (merge, last-write-wins, delete, expiry, object cap), every merger (via `AllMergers` a meta-test asserts full oneof coverage), the event broker, the track mapping, and the OpenSky state-vector parsing against a canned HTTP response (stub `IHttpClientFactory`, no network).
+- **E2E tests** (`TacticalApi.Simulator.E2ETests`) boot the *real* host via `WebApplicationFactory<Program>` and exercise it through *real* gRPC calls on an in-memory transport: add/get round-trip, partial merge over the wire, delete, error headers, snapshot-then-live-events on the subscribe stream, stale-update rejection, the gRPC-Web transport (same path as the official Rheinmetall test client), the scenario source populating all 11 object types end-to-end, the expiry sweeper, and the HTTP status endpoint. Background sources are disabled by default in the fixture so tests stay deterministic; individual tests opt back in via configuration overrides.
+
+Run locally with the same coverage gate as CI:
+
+```bash
+dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
+```
+
 ## CI
 
 `.github/workflows/ci.yml`: restore → build (Release, warnings as errors) → test with coverage → publish the host as a downloadable artifact. NuGet packages are cached.

@@ -50,3 +50,6 @@ app.MapGet("/", (SituationStore store,
 }));
 
 app.Run();
+
+/// <summary>Exposed for E2E tests via WebApplicationFactory.</summary>
+public partial class Program;
