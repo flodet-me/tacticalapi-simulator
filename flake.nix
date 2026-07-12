@@ -6,8 +6,14 @@
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils }:
-    utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      utils,
+    }:
+    utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
 
@@ -19,9 +25,13 @@
         devShells.default = import ./.nix/shell.nix { inherit pkgs dotnet-sdk; };
 
         apps = {
-            format = import ./.nix/format.nix { inherit pkgs dotnet-sdk; };
-            ci-local = import ./.nix/ci-local.nix { inherit pkgs; };
+          format = import ./.nix/format.nix { inherit pkgs dotnet-sdk; };
+          ci-local = import ./.nix/ci-local.nix { inherit pkgs; };
         };
+
+        # `nix fmt` formats this repo's own *.nix files (not the C# solution -
+        # see the `format` app above for that).
+        formatter = pkgs.nixfmt;
       }
     );
 }

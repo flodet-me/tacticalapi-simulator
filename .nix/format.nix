@@ -1,6 +1,7 @@
 { pkgs, dotnet-sdk }:
 {
   type = "app";
+  meta.description = "Runs `dotnet format` over the whole solution (applies fixes, not --verify-no-changes)";
   program = "${pkgs.writeShellScriptBin "dotnet-format-all" ''
     echo "Formatting .NET solution/project..."
 

@@ -1,6 +1,7 @@
 { pkgs }:
 {
   type = "app";
+  meta.description = "Runs .github/workflows/dotnet.yml locally via act (needs Docker); see docs/CI.md";
   program = "${pkgs.writeShellScriptBin "ci-local" ''
     set -euo pipefail
 
