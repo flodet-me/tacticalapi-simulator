@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Sources.Synthetic;
 using Xunit;
@@ -14,7 +15,7 @@ public sealed class SyntheticScenarioSourceTests
         TimeProvider? timeProvider = null)
     {
         return new SyntheticScenarioSource(TestHelpers.Options(options ?? new SyntheticScenarioOptions()),
-            timeProvider ?? TimeProvider.System);
+            timeProvider ?? TimeProvider.System, NullLogger<SyntheticScenarioSource>.Instance);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Logging;
 
 namespace TacticalApi.Simulator.Core.Store;
 
@@ -22,8 +23,19 @@ public sealed class ExpirySweeper(
         while (!stoppingToken.IsCancellationRequested)
         {
             var options1 = options.CurrentValue;
-            var expired = store.SweepExpired(timeProvider.GetUtcNow(), options1.ReporterId);
-            if (expired > 0) logger.LogInformation("Marked {Count} expired situation objects as deleted", expired);
+
+            try
+            {
+                var expired = store.SweepExpired(timeProvider.GetUtcNow(), options1.ReporterId);
+                if (expired > 0) logger.SweepCompleted(expired);
+                else logger.SweepNoExpired();
+            }
+            catch (Exception ex)
+            {
+                // A sweep failure would otherwise be completely silent - there's no
+                // caller to report it to, unlike SimulationSourceRunner's ingest path.
+                logger.SweepFailed(ex);
+            }
 
             await Task.Delay(options1.ExpirySweepInterval, stoppingToken).ConfigureAwait(false);
         }

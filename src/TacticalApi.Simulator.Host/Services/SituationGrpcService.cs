@@ -5,6 +5,7 @@ using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Ingest;
 using TacticalApi.Simulator.Core.Store;
+using TacticalApi.Simulator.Host.Logging;
 
 namespace TacticalApi.Simulator.Host.Services;
 
@@ -45,6 +46,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
             Header = new ResponseHeader { Success = true }
         };
         response.SituationObjects.AddRange(_store.GetSnapshot());
+        _logger.GetSituationObjectsServed(response.SituationObjects.Count);
         return Task.FromResult(response);
     }
 
@@ -52,7 +54,9 @@ public sealed class SituationGrpcService : Situation.SituationBase
     public override Task<AddOrUpdateSituationObjectsResponse> AddOrUpdateSituationObjects(
         AddOrUpdateSituationObjectsRequest request, ServerCallContext context)
     {
+        _logger.AddOrUpdateReceived(request.SituationObjects.Count);
         var result = _ingest.AddOrUpdate(request.SituationObjects);
+        if (!result.Success) _logger.AddOrUpdateFailed(result.ErrorMessage);
         return Task.FromResult(new AddOrUpdateSituationObjectsResponse { Header = result.ToHeader() });
     }
 
@@ -60,7 +64,9 @@ public sealed class SituationGrpcService : Situation.SituationBase
     public override Task<DeleteSituationObjectsResponse> DeleteSituationObjects(
         DeleteSituationObjectsRequest request, ServerCallContext context)
     {
+        _logger.DeleteReceived(request.SituationObjects.Count);
         var result = _ingest.Delete(request.SituationObjects);
+        if (!result.Success) _logger.DeleteFailed(result.ErrorMessage);
         return Task.FromResult(new DeleteSituationObjectsResponse { Header = result.ToHeader() });
     }
 
@@ -71,7 +77,13 @@ public sealed class SituationGrpcService : Situation.SituationBase
         ServerCallContext context)
     {
         var batchSize = _options.CurrentValue.Performance.StreamBatchSize;
-        _logger.LogInformation("Subscriber {Peer} connected", context.Peer);
+
+        // Scope tags every log line for this subscription's lifetime with its peer,
+        // so connect/batch/disconnect entries can be correlated without repeating
+        // {Peer} in every message. A message-template scope renders readably under
+        // the default console formatter, unlike a bare Dictionary state object.
+        using var scope = _logger.BeginScope("Peer={Peer}", context.Peer);
+        _logger.SubscriberConnected(context.Peer);
 
         // Subscribe BEFORE taking the snapshot so no change is lost in between.
         // An object updated during the snapshot may be delivered twice, which
@@ -87,6 +99,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
                 response.SituationObjects.Add(snapshot[i]);
 
             await responseStream.WriteAsync(response, context.CancellationToken).ConfigureAwait(false);
+            _logger.SnapshotBatchSent(context.Peer, response.SituationObjects.Count);
         }
 
         // Live events: drain everything available into one batched response to
@@ -101,6 +114,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
                     response.SituationObjects.Add(obj);
 
                 await responseStream.WriteAsync(response, context.CancellationToken).ConfigureAwait(false);
+                _logger.EventBatchSent(context.Peer, response.SituationObjects.Count);
             }
         }
         catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
@@ -109,7 +123,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         }
         finally
         {
-            _logger.LogInformation("Subscriber {Peer} disconnected", context.Peer);
+            _logger.SubscriberDisconnected(context.Peer);
         }
     }
 

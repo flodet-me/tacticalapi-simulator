@@ -7,6 +7,7 @@ using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Identities;
 using TacticalApi.Simulator.Core.Ingest;
+using TacticalApi.Simulator.Core.Logging;
 using TacticalApi.Simulator.Core.Merging;
 
 namespace TacticalApi.Simulator.Core.Store;
@@ -41,34 +42,49 @@ public sealed class SituationStore(
 
         var changed = new List<SituationObject>(updates.Count);
         var maxObjects = options.CurrentValue.Performance.MaxSituationObjects;
+        var staleCount = 0;
 
         lock (_writeGate)
         {
             foreach (var update in updates)
             {
                 if (!_mergers.TryGet(update.TypeCase, out var merger))
+                {
+                    logger.UnsupportedType(update.TypeCase.ToString());
                     return IngestResult.Fail(
                         $"Situation object type '{update.TypeCase}' is not supported by this simulator. " +
                         "Register an ISituationObjectMerger for it to add support.");
+                }
 
                 var identity = merger.GetIdentity(update);
                 var key = IdentityKey.TryCreate(identity);
-                if (key is null) return IngestResult.Fail("Update is missing the required identity.");
+                if (key is null)
+                {
+                    logger.MissingIdentity();
+                    return IngestResult.Fail("Update is missing the required identity.");
+                }
 
                 var reportingTime = merger.GetReportingTime(update);
                 if (reportingTime is null)
+                {
+                    logger.MissingReportingTime(key);
                     return IngestResult.Fail($"Update '{key}' is missing the required reporting_time.");
+                }
 
                 var exists = _objects.TryGetValue(key, out var current);
                 if (!exists && _objects.Count >= maxObjects)
+                {
+                    logger.ObjectLimitReached(maxObjects, key);
                     return IngestResult.Fail(
                         $"Object limit of {maxObjects} reached (Simulator:Performance:MaxSituationObjects).");
+                }
 
                 // Last-write-wins per object: stale updates are ignored, not errors.
                 if (_lastReportingTime.TryGetValue(key, out var last) &&
                     reportingTime.ToDateTimeOffset() < last.ToDateTimeOffset())
                 {
-                    logger.LogDebug("Ignoring stale update for {Key}", key);
+                    logger.UpdateIgnoredStale(key);
+                    staleCount++;
                     continue;
                 }
 
@@ -78,6 +94,8 @@ public sealed class SituationStore(
                 changed.Add(merged);
             }
         }
+
+        logger.BatchProcessed(updates.Count, changed.Count, staleCount);
 
         if (changed.Count > 0) broker.Publish(changed);
 
@@ -96,7 +114,11 @@ public sealed class SituationStore(
             foreach (var delete in deletes)
             {
                 var key = IdentityKey.TryCreate(delete.Identity);
-                if (key is null) return IngestResult.Fail("Delete is missing the required identity.");
+                if (key is null)
+                {
+                    logger.MissingIdentity();
+                    return IngestResult.Fail("Delete is missing the required identity.");
+                }
 
                 if (!_objects.TryGetValue(key, out var current))
                     // Deleting something unknown is a no-op, matching tolerant server behavior.
@@ -111,6 +133,8 @@ public sealed class SituationStore(
                 changed.Add(deleted);
             }
         }
+
+        logger.ObjectsDeleted(deletes.Count, changed.Count);
 
         if (changed.Count > 0) broker.Publish(changed);
 

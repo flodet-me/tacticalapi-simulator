@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Sources;
+using TacticalApi.Simulator.Sources.Nws.Logging;
 
 namespace TacticalApi.Simulator.Sources.Nws;
 
@@ -53,22 +54,35 @@ public sealed class NwsAlertSource(
         if (document is null || !document.RootElement.TryGetProperty("features", out var features) ||
             features.ValueKind != JsonValueKind.Array)
         {
-            logger.LogDebug("NWS returned no active alerts for area {Area}", o.Area);
+            logger.NoActiveAlerts(o.Area);
             return [];
         }
 
         var now = timeProvider.GetUtcNow();
         var reporter = new Identity { StringIdentity = o.ReporterId };
         var updates = new List<UpdateSituationObject>();
+        var skipped = 0;
+        var noGeometry = 0;
+        var capReached = false;
 
         foreach (var feature in features.EnumerateArray())
         {
-            if (o.MaxAlertsPerPoll > 0 && updates.Count >= o.MaxAlertsPerPoll) break;
+            if (o.MaxAlertsPerPoll > 0 && updates.Count >= o.MaxAlertsPerPoll)
+            {
+                capReached = true;
+                break;
+            }
+
             if (!feature.TryGetProperty("properties", out var props)) continue;
 
             var alertId = GetString(props, "id");
             var eventName = GetString(props, "event");
-            if (alertId is null || eventName is null) continue;
+            if (alertId is null || eventName is null)
+            {
+                logger.AlertSkippedMissingFields();
+                skipped++;
+                continue;
+            }
 
             var sent = GetDateTimeOffset(props, "sent") ?? now;
             var expires = GetDateTimeOffset(props, "expires");
@@ -84,7 +98,12 @@ public sealed class NwsAlertSource(
                 GetString(props, "headline"), GetString(props, "description"), precedence));
 
             var ring = OuterRing(feature);
-            if (ring.Count == 0) continue;
+            if (ring.Count == 0)
+            {
+                logger.AlertHasNoGeometry(alertId);
+                noGeometry++;
+                continue;
+            }
 
             var (lat, lon) = Centroid(ring);
             var timeToLive = expires is { } e ? e - now : o.TrackTimeToLive;
@@ -97,7 +116,8 @@ public sealed class NwsAlertSource(
                 $"nws:sketch:{alertId}", reporter, reportingTime, expiryTime, eventName, ring, precedence));
         }
 
-        logger.LogDebug("NWS produced {Count} updates for area {Area}", updates.Count, o.Area);
+        if (capReached) logger.AlertCapReached(o.MaxAlertsPerPoll);
+        logger.AlertsProduced(updates.Count, o.Area, skipped, noGeometry);
         return updates;
     }
 

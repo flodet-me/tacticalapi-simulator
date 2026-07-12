@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TacticalApi.Simulator.Core.Ingest;
+using TacticalApi.Simulator.Core.Logging;
 
 namespace TacticalApi.Simulator.Core.Sources;
 
@@ -19,28 +21,56 @@ public sealed class SimulationSourceRunner<TSource>(
     private static readonly TimeSpan DisabledPollInterval = TimeSpan.FromSeconds(5);
 
     private readonly TSource _source = source;
+    private long _cycle;
+
+    // Starts true so a source that's disabled from the very first tick logs
+    // that transition too, instead of only ever logging "enabled -> disabled".
+    private bool _wasEnabled = true;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Simulation source '{Source}' runner started", _source.Name);
+        logger.RunnerStarted(_source.Name);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             if (!_source.Enabled)
             {
+                if (_wasEnabled)
+                {
+                    logger.SourceDisabled(_source.Name);
+                    _wasEnabled = false;
+                }
+
                 await Task.Delay(DisabledPollInterval, stoppingToken).ConfigureAwait(false);
                 continue;
             }
 
+            if (!_wasEnabled)
+            {
+                logger.SourceEnabled(_source.Name);
+                _wasEnabled = true;
+            }
+
+            // Scope carries source/cycle context to every log entry emitted during
+            // this cycle - including ones from the source's own ProduceAsync logger -
+            // so both plain-text consoles and structured-logging backends can
+            // correlate them without repeating the source name and cycle number in
+            // every message. A message-template scope (rather than a bare
+            // Dictionary) renders readably under the default console formatter too.
+            _cycle++;
+            using var scope = logger.BeginScope("SourceName={SourceName} Cycle={Cycle}", _source.Name, _cycle);
+            var stopwatch = Stopwatch.StartNew();
+
             try
             {
                 var updates = await _source.ProduceAsync(stoppingToken).ConfigureAwait(false);
+                logger.CycleProduced(_source.Name, _cycle, updates.Count, stopwatch.Elapsed.TotalMilliseconds);
+
                 if (updates.Count > 0)
                 {
                     var result = ingest.AddOrUpdate(updates);
                     if (!result.Success)
-                        logger.LogWarning("Source '{Source}' ingest failed: {Error}", _source.Name,
-                            result.ErrorMessage);
+                        logger.IngestFailed(_source.Name, result.ErrorMessage);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -49,7 +79,7 @@ public sealed class SimulationSourceRunner<TSource>(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Source '{Source}' failed; retrying next cycle", _source.Name);
+                logger.ProduceFailed(ex, _source.Name);
             }
 
             await Task.Delay(_source.Interval, stoppingToken).ConfigureAwait(false);

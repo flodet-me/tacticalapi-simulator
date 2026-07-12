@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Sources;
+using TacticalApi.Simulator.Sources.Synthetic.Logging;
 
 namespace TacticalApi.Simulator.Sources.Synthetic;
 
@@ -11,7 +13,8 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// </summary>
 public sealed class SyntheticAirTrackSource(
     IOptionsMonitor<SyntheticAirTrackOptions> options,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<SyntheticAirTrackSource> logger)
     : ISimulationSource
 {
     private const double EarthRadiusKm = 6371.0;
@@ -70,6 +73,7 @@ public sealed class SyntheticAirTrackSource(
                 options1.TrackTimeToLive));
         }
 
+        logger.AirTracksProduced(updates.Count);
         return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
     }
 

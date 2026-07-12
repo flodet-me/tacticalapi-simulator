@@ -1,8 +1,10 @@
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Sources;
+using TacticalApi.Simulator.Sources.Synthetic.Logging;
 
 namespace TacticalApi.Simulator.Sources.Synthetic;
 
@@ -26,7 +28,8 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// </summary>
 public sealed class SyntheticScenarioSource(
     IOptionsMonitor<SyntheticScenarioOptions> options,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<SyntheticScenarioSource> logger)
     : ISimulationSource
 {
     private const double EarthRadiusKm = 6371.0;
@@ -48,6 +51,7 @@ public sealed class SyntheticScenarioSource(
     private readonly Random _random = new(options.CurrentValue.Seed);
     private int _chatCounter;
     private int _eventCounter;
+    private ActionTaskStatusType? _lastTaskStatus;
 
     /// <inheritdoc/>
     public string Name => SimulationSourceName.FromSectionName(SyntheticScenarioOptions.SectionName);
@@ -96,11 +100,25 @@ public sealed class SyntheticScenarioSource(
         };
 
         // --- Spontaneous incidents (expire automatically via TTL) -------------
-        if (_random.NextDouble() < o.EventProbability) updates.Add(RandomIncident(o, reporter, now, nowTs, waypoints));
+        if (_random.NextDouble() < o.EventProbability)
+        {
+            var incident = RandomIncident(o, reporter, now, nowTs, waypoints);
+            updates.Add(incident);
+            logger.IncidentRaised(
+                incident.ActionEvent.Identity.StringIdentity,
+                incident.ActionEvent.Name.Content,
+                incident.ActionEvent.ThreatLevel.Content ?? 0);
+        }
 
         // --- SITREP chat -------------------------------------------------------
-        if (_random.NextDouble() < o.ChatProbability) updates.Add(SitrepChat(reporter, nowTs, now));
+        if (_random.NextDouble() < o.ChatProbability)
+        {
+            var chat = SitrepChat(reporter, nowTs, now);
+            updates.Add(chat);
+            logger.ChatMessageSent(chat.TextDocument.Identity.StringIdentity, chat.TextDocument.PlainContent.Content);
+        }
 
+        logger.ScenarioCycleProduced(updates.Count);
         return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
     }
 
@@ -229,6 +247,12 @@ public sealed class SyntheticScenarioSource(
             > 0.98 => ActionTaskStatusType.Complete,
             _ => ActionTaskStatusType.InProgress
         };
+
+        if (_lastTaskStatus != status)
+        {
+            logger.PatrolTaskStatusChanged(status.ToString());
+            _lastTaskStatus = status;
+        }
 
         var task = new UpdateActionTask
         {

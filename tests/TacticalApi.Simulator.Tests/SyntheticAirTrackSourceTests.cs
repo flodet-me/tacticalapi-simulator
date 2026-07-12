@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Sources.Synthetic;
 using Xunit;
@@ -15,7 +16,8 @@ public sealed class SyntheticAirTrackSourceTests
     {
         // Arrange
         var options = new SyntheticAirTrackOptions { UpdateInterval = TimeSpan.FromSeconds(7) };
-        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System);
+        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System,
+            NullLogger<SyntheticAirTrackSource>.Instance);
 
         // Act & Assert
         Assert.Equal("SyntheticAirTracks", source.Name);
@@ -27,7 +29,8 @@ public sealed class SyntheticAirTrackSourceTests
     {
         // Arrange
         var options = new SyntheticAirTrackOptions { TrackCount = 5 };
-        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System);
+        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System,
+            NullLogger<SyntheticAirTrackSource>.Instance);
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -48,7 +51,8 @@ public sealed class SyntheticAirTrackSourceTests
     {
         // Arrange
         var options = new SyntheticAirTrackOptions { TrackCount = 3 };
-        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System);
+        var source = new SyntheticAirTrackSource(TestHelpers.Options(options), TimeProvider.System,
+            NullLogger<SyntheticAirTrackSource>.Instance);
 
         // Act
         var first = await source.ProduceAsync(CancellationToken.None);

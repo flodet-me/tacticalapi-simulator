@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Sources;
+using TacticalApi.Simulator.Sources.OpenSky.Logging;
 
 namespace TacticalApi.Simulator.Sources.OpenSky;
 
@@ -50,16 +51,23 @@ public sealed class OpenSkySource(
         if (document is null || !document.RootElement.TryGetProperty("states", out var states) ||
             states.ValueKind != JsonValueKind.Array)
         {
-            logger.LogDebug("OpenSky returned no states");
+            logger.NoStatesReturned();
             return [];
         }
 
         var now = timeProvider.GetUtcNow();
         var updates = new List<UpdateSituationObject>();
+        var skipped = 0;
+        var index = 0;
+        var capReached = false;
 
         foreach (var state in states.EnumerateArray())
         {
-            if (options1.MaxTracksPerPoll > 0 && updates.Count >= options1.MaxTracksPerPoll) break;
+            if (options1.MaxTracksPerPoll > 0 && updates.Count >= options1.MaxTracksPerPoll)
+            {
+                capReached = true;
+                break;
+            }
 
             // State vector layout (indices per OpenSky REST docs):
             // 0 icao24, 1 callsign, 2 origin_country, 5 longitude, 6 latitude,
@@ -68,7 +76,13 @@ public sealed class OpenSkySource(
             var icao24 = GetString(state, 0);
             var longitude = GetDouble(state, 5);
             var latitude = GetDouble(state, 6);
-            if (icao24 is null || latitude is null || longitude is null) continue;
+            if (icao24 is null || latitude is null || longitude is null)
+            {
+                logger.StateSkipped(index);
+                skipped++;
+                index++;
+                continue;
+            }
 
             var callsign = GetString(state, 1)?.Trim();
             var country = GetString(state, 2);
@@ -88,9 +102,11 @@ public sealed class OpenSkySource(
             updates.Add(TrackUpdateFactory.CreateSymbolUpdate(
                 track, options1.ReporterId, options1.SymbolCode, options1.SymbolCatalog, now,
                 options1.TrackTimeToLive));
+            index++;
         }
 
-        logger.LogDebug("OpenSky produced {Count} track updates", updates.Count);
+        if (capReached) logger.TrackCapReached(options1.MaxTracksPerPoll);
+        logger.TracksProduced(updates.Count, skipped);
         return updates;
     }
 
