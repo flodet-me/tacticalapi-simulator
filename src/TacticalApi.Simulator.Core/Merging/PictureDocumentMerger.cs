@@ -6,18 +6,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// <summary>Merge logic for <see cref="PictureDocument" /> objects.</summary>
 public sealed class PictureDocumentMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.PictureDocument;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.PictureDocument?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.PictureDocument?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.PictureDocument;

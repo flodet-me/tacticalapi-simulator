@@ -7,6 +7,7 @@ namespace TacticalApi.Simulator.Core.Sources;
 /// </summary>
 public static class SimulationSourceName
 {
+    /// <summary>Returns the last colon-separated segment of <paramref name="sectionName" />.</summary>
     public static string FromSectionName(string sectionName)
     {
         return sectionName[(sectionName.LastIndexOf(':') + 1)..];

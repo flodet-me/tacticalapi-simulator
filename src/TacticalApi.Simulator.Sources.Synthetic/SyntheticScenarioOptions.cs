@@ -10,10 +10,13 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// </summary>
 public sealed class SyntheticScenarioOptions
 {
+    /// <summary>Configuration section name this options type binds to.</summary>
     public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticScenario";
 
+    /// <summary>Enabled by default since this source needs no network access.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>Delay between simulation cycles.</summary>
     [Range(typeof(TimeSpan), "00:00:00.500", "01:00:00")]
     public TimeSpan UpdateInterval { get; set; } = TimeSpan.FromSeconds(5);
 
@@ -21,6 +24,7 @@ public sealed class SyntheticScenarioOptions
     [Range(-90, 90)]
     public double CenterLatitude { get; set; } = 53.08;
 
+    /// <summary>Scenario anchor point; see <see cref="CenterLatitude" />.</summary>
     [Range(-180, 180)] public double CenterLongitude { get; set; } = 8.80;
 
     /// <summary>Rough extent of the scenario in kilometers.</summary>
@@ -46,5 +50,6 @@ public sealed class SyntheticScenarioOptions
     [Range(typeof(TimeSpan), "00:01:00", "1.00:00:00")]
     public TimeSpan PatrolLapDuration { get; set; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>Reporter identity attached to every object this source emits.</summary>
     [Required] public string ReporterId { get; set; } = "SIM-SCENARIO";
 }

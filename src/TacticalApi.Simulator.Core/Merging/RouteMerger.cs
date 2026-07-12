@@ -6,18 +6,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// <summary>Merge logic for <see cref="Route" /> objects.</summary>
 public sealed class RouteMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.Route;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.Route?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.Route?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.Route;

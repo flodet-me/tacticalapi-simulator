@@ -10,18 +10,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// </summary>
 public sealed class OverlayDocumentMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.OverlayDocument;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.OverlayDocument?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.OverlayDocument?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.OverlayDocument;

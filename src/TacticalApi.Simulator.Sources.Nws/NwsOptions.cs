@@ -15,11 +15,13 @@ public sealed class NwsOptions() : TrackEmitterOptions(
     "SIM-NWS",
     TimeSpan.FromMinutes(15))
 {
+    /// <summary>Configuration section name this options type binds to.</summary>
     public const string SectionName = SimulatorOptions.SourcesSectionName + ":Nws";
 
     /// <summary>Disabled by default so the simulator runs fully offline out of the box.</summary>
     public bool Enabled { get; set; }
 
+    /// <summary>Base URL of the NWS API.</summary>
     [Required] public Uri BaseAddress { get; set; } = new("https://api.weather.gov/");
 
     /// <summary>Two-letter US state/territory code (NWS "area" filter, e.g. "OK", "TX", "FL").</summary>
@@ -27,6 +29,7 @@ public sealed class NwsOptions() : TrackEmitterOptions(
     [RegularExpression("^[A-Z]{2}$")]
     public string Area { get; set; } = "OK";
 
+    /// <summary>How often to poll for active alerts.</summary>
     [Range(typeof(TimeSpan), "00:00:30", "01:00:00")]
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromMinutes(2);
 

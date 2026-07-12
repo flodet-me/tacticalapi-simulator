@@ -9,6 +9,7 @@ namespace TacticalApi.Simulator.Core.Configuration;
 /// </summary>
 public sealed class SimulatorOptions
 {
+    /// <summary>Configuration section name this options type binds to.</summary>
     public const string SectionName = "Simulator";
 
     /// <summary>Shared parent section for every <c>ISimulationSource</c>'s own options.</summary>
@@ -26,5 +27,6 @@ public sealed class SimulatorOptions
     [Range(typeof(TimeSpan), "00:00:01", "01:00:00")]
     public TimeSpan ExpirySweepInterval { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>Throughput/capacity tuning knobs; see <see cref="PerformanceOptions" />.</summary>
     public PerformanceOptions Performance { get; set; } = new();
 }

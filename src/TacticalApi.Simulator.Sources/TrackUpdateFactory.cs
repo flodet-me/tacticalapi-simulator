@@ -10,6 +10,7 @@ namespace TacticalApi.Simulator.Sources;
 /// </summary>
 public static class TrackUpdateFactory
 {
+    /// <summary>Builds a Symbol update from a track report, with expiry set to <paramref name="now" /> + <paramref name="timeToLive" />.</summary>
     public static UpdateSituationObject CreateSymbolUpdate(
         in TrackReport track,
         string reporterId,

@@ -11,6 +11,7 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// </summary>
 public interface ISituationObjectMerger
 {
+    /// <summary>The oneof case this merger handles.</summary>
     public UpdateSituationObject.TypeOneofCase HandledCase { get; }
 
     /// <summary>Identity of the object addressed by this update.</summary>

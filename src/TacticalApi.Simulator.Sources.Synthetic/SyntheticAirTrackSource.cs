@@ -17,12 +17,16 @@ public sealed class SyntheticAirTrackSource(
     private const double EarthRadiusKm = 6371.0;
     private readonly DateTimeOffset _epoch = timeProvider.GetUtcNow();
 
+    /// <inheritdoc/>
     public string Name => SimulationSourceName.FromSectionName(SyntheticAirTrackOptions.SectionName);
 
+    /// <inheritdoc/>
     public bool Enabled => options.CurrentValue.Enabled;
 
+    /// <inheritdoc/>
     public TimeSpan Interval => options.CurrentValue.UpdateInterval;
 
+    /// <inheritdoc/>
     public Task<IReadOnlyList<UpdateSituationObject>> ProduceAsync(CancellationToken cancellationToken)
     {
         var options1 = options.CurrentValue;

@@ -17,8 +17,10 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
 {
     private readonly ConcurrentDictionary<Guid, Channel<SituationObject>> _subscribers = new();
 
+    /// <summary>Number of active subscriptions.</summary>
     public int SubscriberCount => _subscribers.Count;
 
+    /// <summary>Opens a new subscriber channel; dispose the returned handle to unsubscribe.</summary>
     public Subscription Subscribe()
     {
         var perf = options.CurrentValue.Performance;
@@ -34,6 +36,7 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
         return new Subscription(this, id, channel.Reader);
     }
 
+    /// <summary>Fans out a batch of changed objects to every current subscriber.</summary>
     public void Publish(IReadOnlyList<SituationObject> changed)
     {
         if (_subscribers.IsEmpty) return;
@@ -68,8 +71,10 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
             Reader = reader;
         }
 
+        /// <summary>Read side of this subscriber's channel.</summary>
         public ChannelReader<SituationObject> Reader { get; }
 
+        /// <summary>Unsubscribes and completes the underlying channel.</summary>
         public void Dispose()
         {
             _broker.Unsubscribe(_id);

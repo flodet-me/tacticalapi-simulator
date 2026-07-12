@@ -31,8 +31,10 @@ public sealed class SituationStore(
     private readonly ConcurrentDictionary<string, SituationObject> _objects = new();
     private readonly Lock _writeGate = new();
 
+    /// <summary>Number of situation objects currently held (including soft-deleted ones).</summary>
     public int Count => _objects.Count;
 
+    /// <inheritdoc/>
     public IngestResult AddOrUpdate(IReadOnlyList<UpdateSituationObject> updates)
     {
         if (updates.Count == 0) return IngestResult.Ok;
@@ -82,6 +84,7 @@ public sealed class SituationStore(
         return IngestResult.Ok;
     }
 
+    /// <inheritdoc/>
     public IngestResult Delete(IReadOnlyList<DeleteSituationObject> deletes)
     {
         if (deletes.Count == 0) return IngestResult.Ok;

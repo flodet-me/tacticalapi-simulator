@@ -26,14 +26,19 @@ public sealed class NwsAlertSource(
     ILogger<NwsAlertSource> logger)
     : ISimulationSource
 {
+    /// <summary>Name of the named <see cref="HttpClient" /> registered for this source.</summary>
     public static readonly string HttpClientName = SimulationSourceName.FromSectionName(NwsOptions.SectionName);
 
+    /// <inheritdoc/>
     public string Name => HttpClientName;
 
+    /// <inheritdoc/>
     public bool Enabled => options.CurrentValue.Enabled;
 
+    /// <inheritdoc/>
     public TimeSpan Interval => options.CurrentValue.PollInterval;
 
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<UpdateSituationObject>> ProduceAsync(CancellationToken cancellationToken)
     {
         var o = options.CurrentValue;

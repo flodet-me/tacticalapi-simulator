@@ -9,6 +9,7 @@ namespace TacticalApi.Simulator.Core.Identities;
 /// </summary>
 public static class IdentityKey
 {
+    /// <summary>Builds the dictionary key for <paramref name="identity" />, or null if it is unset/empty.</summary>
     public static string? TryCreate(Identity? identity)
     {
         return identity?.TypeCase switch

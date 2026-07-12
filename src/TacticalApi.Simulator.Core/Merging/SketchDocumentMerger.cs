@@ -6,18 +6,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// <summary>Merge logic for <see cref="SketchDocument" /> objects.</summary>
 public sealed class SketchDocumentMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.SketchDocument;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.SketchDocument?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.SketchDocument?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.SketchDocument;

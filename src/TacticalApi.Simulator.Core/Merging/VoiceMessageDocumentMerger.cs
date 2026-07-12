@@ -6,18 +6,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// <summary>Merge logic for <see cref="VoiceMessageDocument" /> objects.</summary>
 public sealed class VoiceMessageDocumentMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.VoiceMessageDocument;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.VoiceMessageDocument?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.VoiceMessageDocument?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.VoiceMessageDocument;

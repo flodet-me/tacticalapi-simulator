@@ -21,6 +21,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
     private readonly IOptionsMonitor<SimulatorOptions> _options;
     private readonly SituationStore _store;
 
+    /// <summary>Creates the service with its store/broker/ingest/config/logging dependencies.</summary>
     public SituationGrpcService(
         SituationStore store,
         SituationEventBroker broker,
@@ -35,6 +36,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         _logger = logger;
     }
 
+    /// <summary>Returns the full current snapshot of non-deleted situation objects.</summary>
     public override Task<GetSituationObjectsResponse> GetSituationObjects(
         GetSituationObjectsRequest request, ServerCallContext context)
     {
@@ -46,6 +48,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         return Task.FromResult(response);
     }
 
+    /// <summary>Creates or updates the given situation objects in the store.</summary>
     public override Task<AddOrUpdateSituationObjectsResponse> AddOrUpdateSituationObjects(
         AddOrUpdateSituationObjectsRequest request, ServerCallContext context)
     {
@@ -53,6 +56,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         return Task.FromResult(new AddOrUpdateSituationObjectsResponse { Header = result.ToHeader() });
     }
 
+    /// <summary>Marks the given situation objects as deleted.</summary>
     public override Task<DeleteSituationObjectsResponse> DeleteSituationObjects(
         DeleteSituationObjectsRequest request, ServerCallContext context)
     {
@@ -60,6 +64,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         return Task.FromResult(new DeleteSituationObjectsResponse { Header = result.ToHeader() });
     }
 
+    /// <summary>Streams an initial snapshot followed by live change events until the client disconnects.</summary>
     public override async Task SubscribeSituationObjectEvents(
         SubscribeSituationObjectEventsRequest request,
         IServerStreamWriter<SubscribeSituationObjectEventsResponse> responseStream,

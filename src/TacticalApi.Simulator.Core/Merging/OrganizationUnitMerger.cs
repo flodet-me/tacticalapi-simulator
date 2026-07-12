@@ -6,18 +6,22 @@ namespace TacticalApi.Simulator.Core.Merging;
 /// <summary>Merge logic for <see cref="OrganizationUnit" /> objects (ORBAT).</summary>
 public sealed class OrganizationUnitMerger : ISituationObjectMerger
 {
+    /// <inheritdoc/>
     public UpdateSituationObject.TypeOneofCase HandledCase => UpdateSituationObject.TypeOneofCase.OrganizationUnit;
 
+    /// <inheritdoc/>
     public Identity? GetIdentity(UpdateSituationObject update)
     {
         return update.OrganizationUnit?.Identity;
     }
 
+    /// <inheritdoc/>
     public Timestamp? GetReportingTime(UpdateSituationObject update)
     {
         return update.OrganizationUnit?.ReportingTime;
     }
 
+    /// <inheritdoc/>
     public SituationObject Merge(SituationObject? current, UpdateSituationObject update)
     {
         var u = update.OrganizationUnit;

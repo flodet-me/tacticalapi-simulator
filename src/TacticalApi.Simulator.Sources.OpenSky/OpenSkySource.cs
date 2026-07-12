@@ -24,14 +24,19 @@ public sealed class OpenSkySource(
     ILogger<OpenSkySource> logger)
     : ISimulationSource
 {
+    /// <summary>Name of the named <see cref="HttpClient" /> registered for this source.</summary>
     public static readonly string HttpClientName = SimulationSourceName.FromSectionName(OpenSkyOptions.SectionName);
 
+    /// <inheritdoc/>
     public string Name => HttpClientName;
 
+    /// <inheritdoc/>
     public bool Enabled => options.CurrentValue.Enabled;
 
+    /// <inheritdoc/>
     public TimeSpan Interval => options.CurrentValue.PollInterval;
 
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<UpdateSituationObject>> ProduceAsync(CancellationToken cancellationToken)
     {
         var options1 = options.CurrentValue;

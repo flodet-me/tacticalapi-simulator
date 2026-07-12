@@ -49,12 +49,16 @@ public sealed class SyntheticScenarioSource(
     private int _chatCounter;
     private int _eventCounter;
 
+    /// <inheritdoc/>
     public string Name => SimulationSourceName.FromSectionName(SyntheticScenarioOptions.SectionName);
 
+    /// <inheritdoc/>
     public bool Enabled => options.CurrentValue.Enabled;
 
+    /// <inheritdoc/>
     public TimeSpan Interval => options.CurrentValue.UpdateInterval;
 
+    /// <inheritdoc/>
     public Task<IReadOnlyList<UpdateSituationObject>> ProduceAsync(CancellationToken cancellationToken)
     {
         var o = options.CurrentValue;

@@ -8,6 +8,7 @@ using TacticalApi.Simulator.Core.Store;
 
 namespace TacticalApi.Simulator.Core;
 
+/// <summary>DI registration helpers for the simulator's core services and simulation sources.</summary>
 public static class SimulatorCoreServiceCollectionExtensions
 {
     /// <summary>Registers store, event broker, mergers and expiry sweep.</summary>

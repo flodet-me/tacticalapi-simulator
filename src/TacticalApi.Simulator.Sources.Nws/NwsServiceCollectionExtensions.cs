@@ -4,8 +4,10 @@ using TacticalApi.Simulator.Core;
 
 namespace TacticalApi.Simulator.Sources.Nws;
 
+/// <summary>DI registration for the NWS active-alerts simulation source.</summary>
 public static class NwsServiceCollectionExtensions
 {
+    /// <summary>Registers the named HttpClient, options, and the source itself.</summary>
     public static IServiceCollection AddNwsSources(this IServiceCollection services, IConfiguration configuration)
     {
         // api.weather.gov rejects requests without an identifying User-Agent.
