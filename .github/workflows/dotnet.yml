@@ -16,7 +16,13 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  format-check:
+  # Single job for everything that needs a restored solution: format, NuGet
+  # vulnerability scan, build+test+coverage, SBOM+license check, publish, and
+  # the Docker image (build + vulnerability scan + image SBOM). Kept as one
+  # job (rather than separate format-check/sbom jobs) so there's exactly one
+  # checkout/restore instead of three - the trade-off is that a formatting
+  # typo now fails after the full pipeline runs instead of in ~15 seconds.
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (including TacticalAPI submodule)
@@ -24,24 +30,6 @@ jobs:
         with:
           # Pulls external/tacticalapi (Rheinmetall/tacticalapi) at the
           # commit pinned in this repository.
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Set up build environment
-        uses: ./.github/actions/setup-build-env
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Check formatting
-        run: dotnet format --verify-no-changes --verbosity diagnostic
-
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (including TacticalAPI submodule)
-        uses: actions/checkout@v7
-        with:
           submodules: recursive
           fetch-depth: 1
 
@@ -53,6 +41,21 @@ jobs:
 
       - name: Restore
         run: dotnet restore
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      - name: Scan for vulnerable NuGet packages
+        run: |
+          # NuGetAuditMode=all (Directory.Build.props) already fails restore/build
+          # on a detected vulnerability via TreatWarningsAsErrors; this step gives
+          # it a dedicated, readable report instead of a buried build warning.
+          dotnet list package --vulnerable --include-transitive | tee vulnerable-packages.txt
+          if grep -q "has the following vulnerable packages" vulnerable-packages.txt; then
+            echo "::error::Vulnerable NuGet package(s) detected - see the report above."
+            exit 1
+          fi
+          echo "No vulnerable NuGet packages found."
 
       - name: Compute build version
         id: version
@@ -109,78 +112,10 @@ jobs:
           path: coveragereport
           if-no-files-found: ignore
 
-      - name: Publish host
-        run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish
-
-      - name: Upload host artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: tacticalapi-simulator-${{ steps.version.outputs.artifact_suffix }}
-          path: ./publish
-
-      - name: Build Docker image
-        run: >
-          docker build
-          --build-arg VERSION=${{ steps.version.outputs.full_version }}
-          --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
-          .
-
-      - name: Scan Docker image for vulnerabilities
-        run: |
-          # Official Trivy image straight from Docker Hub, scanning the local
-          # image via the mounted Docker socket - no GitHub API, no token.
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:latest image \
-            --severity CRITICAL,HIGH \
-            --ignore-unfixed \
-            --exit-code 1 \
-            tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
-
-  # SBOM (CycloneDX) for what's actually shipped - the Host + its Sources.*
-  # dependencies, excluding dev/test-only tooling - plus a license allow-list
-  # gate so a new dependency with an incompatible license fails CI instead of
-  # being noticed later.
-  sbom:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (including TacticalAPI submodule)
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Set up build environment
-        uses: ./.github/actions/setup-build-env
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Scan for vulnerable NuGet packages
-        run: |
-          # NuGetAuditMode=all (Directory.Build.props) already fails restore/build
-          # on a detected vulnerability via TreatWarningsAsErrors; this step gives
-          # it a dedicated, readable report instead of a buried build warning.
-          dotnet list package --vulnerable --include-transitive | tee vulnerable-packages.txt
-          if grep -q "has the following vulnerable packages" vulnerable-packages.txt; then
-            echo "::error::Vulnerable NuGet package(s) detected - see the report above."
-            exit 1
-          fi
-          echo "No vulnerable NuGet packages found."
-
-      - name: Compute build version
-        id: version
-        run: |
-          # Directory.Build.props is the single source of truth for the base
-          # version; CI only appends the run number + commit sha.
-          version_prefix=$(dotnet msbuild src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj -getProperty:VersionPrefix)
-          short_sha="${GITHUB_SHA::7}"
-          artifact_suffix="${{ github.run_number }}-${short_sha}"
-          echo "artifact_suffix=${artifact_suffix}" >> "$GITHUB_OUTPUT"
-          echo "full_version=${version_prefix}-${artifact_suffix}" >> "$GITHUB_OUTPUT"
-
       - name: Generate SBOM (CycloneDX)
         run: |
+          # Scoped to the Host + its Sources.* dependencies (excludes dev/test-only
+          # tooling) - what's actually in the Docker image, not the whole solution.
           dotnet tool install --global CycloneDX --version 6.2.0
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet-CycloneDX TacticalApi.Simulator.slnx \
@@ -225,6 +160,54 @@ jobs:
 
           print(f"License check passed: {component_count} components, all within {sorted(ALLOWED)}.")
           EOF
+
+      - name: Publish host
+        run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish
+
+      - name: Upload host artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-simulator-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish
+
+      - name: Build Docker image
+        run: >
+          docker build
+          --build-arg VERSION=${{ steps.version.outputs.full_version }}
+          --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+          .
+
+      - name: Scan Docker image for vulnerabilities
+        run: |
+          # Official Trivy image straight from Docker Hub, scanning the local
+          # image via the mounted Docker socket - no GitHub API, no token.
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 1 \
+            tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+
+      - name: Generate Docker image SBOM
+        run: |
+          # Covers what the source-level SBOM above can't see: the OS base
+          # image's packages, not just the .NET/NuGet dependency graph.
+          # Written to stdout rather than via -v <path>:/out - that bind mount
+          # is resolved by the Docker daemon, not this shell, and the two
+          # disagree on paths under act's nested-container setup.
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format cyclonedx \
+            tacticalapi-simulator:${{ steps.version.outputs.image_tag }} \
+            > image-sbom.json
+
+      - name: Upload Docker image SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-sbom-${{ steps.version.outputs.artifact_suffix }}
+          path: image-sbom.json
 
   # Builds against the LATEST upstream TacticalAPI contract (submodule moved
   # to origin/main) without committing anything. Fails when an upstream proto

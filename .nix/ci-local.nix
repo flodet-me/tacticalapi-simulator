@@ -10,7 +10,7 @@
     fi
 
     echo "Running .github/workflows/dotnet.yml locally via act..."
-    echo "(runner image pinned in .actrc; pass extra act flags after --, e.g. 'nix run .#ci-local -- -j format-check')"
+    echo "(runner image pinned in .actrc; pass extra act flags after --, e.g. 'nix run .#ci-local -- -j build-and-test')"
     exec ${pkgs.act}/bin/act "$@"
   ''}/bin/ci-local";
 }
