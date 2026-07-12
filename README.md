@@ -148,4 +148,4 @@ dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 - `format-check`: `dotnet format --verify-no-changes` — fails fast on style/formatting drift without waiting on the full build.
 - `build-and-test`: restore → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → publish the host as a downloadable artifact → build (but not push) a Docker image tagged with that same version, using the `Dockerfile` at the repo root.
 
-NuGet packages are cached in both jobs.
+The .NET SDK install + NuGet cache steps are factored into a shared composite action (`.github/actions/setup-build-env`) so the SDK version and cache key are defined once, not per job.

@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Core.Configuration;
 
 namespace TacticalApi.Simulator.Sources.OpenSky;
 
@@ -8,9 +8,12 @@ namespace TacticalApi.Simulator.Sources.OpenSky;
 ///     "Simulator:Sources:OpenSky". Anonymous OpenSky access is rate limited, so
 ///     keep PollInterval conservative (>= 10s recommended).
 /// </summary>
-public sealed class OpenSkyOptions
+public sealed class OpenSkyOptions() : TrackEmitterOptions(
+    symbolCode: "SNAPCF---------", // neutral air, MIL-STD-2525C
+    reporterId: "SIM-OPENSKY",
+    trackTimeToLive: TimeSpan.FromMinutes(2))
 {
-    public const string SectionName = "Simulator:Sources:OpenSky";
+    public const string SectionName = SimulatorOptions.SourcesSectionName + ":OpenSky";
 
     /// <summary>Disabled by default so the simulator runs fully offline out of the box.</summary>
     public bool Enabled { get; set; }
@@ -33,16 +36,4 @@ public sealed class OpenSkyOptions
     /// <summary>Cap per poll to bound ingest cost (0 = unlimited).</summary>
     [Range(0, 100_000)]
     public int MaxTracksPerPoll { get; set; } = 500;
-
-    /// <summary>Symbol code for live civil flights (default: neutral air, MIL-STD-2525C).</summary>
-    [Required]
-    public string SymbolCode { get; set; } = "SNAPCF---------";
-
-    public SymbolCatalog SymbolCatalog { get; set; } = SymbolCatalog.Mil2525C;
-
-    /// <summary>Tracks expire after this TTL if no newer report arrives (aircraft left the bbox).</summary>
-    [Range(typeof(TimeSpan), "00:00:05", "01:00:00")]
-    public TimeSpan TrackTimeToLive { get; set; } = TimeSpan.FromMinutes(2);
-
-    [Required] public string ReporterId { get; set; } = "SIM-OPENSKY";
 }

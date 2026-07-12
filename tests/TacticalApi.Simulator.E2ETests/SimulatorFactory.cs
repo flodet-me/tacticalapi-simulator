@@ -3,6 +3,8 @@ using Grpc.Net.Client.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Sources.OpenSky;
+using TacticalApi.Simulator.Sources.Synthetic;
 
 namespace TacticalApi.Simulator.E2ETests;
 
@@ -30,9 +32,9 @@ public class SimulatorFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("E2ETest");
 
         // Deterministic baseline: no background sources unless a test opts in.
-        builder.UseSetting("Simulator:Sources:SyntheticScenario:Enabled", "false");
-        builder.UseSetting("Simulator:Sources:SyntheticAirTracks:Enabled", "false");
-        builder.UseSetting("Simulator:Sources:OpenSky:Enabled", "false");
+        builder.UseSetting($"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}", "false");
+        builder.UseSetting($"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}", "false");
+        builder.UseSetting($"{OpenSkyOptions.SectionName}:{nameof(OpenSkyOptions.Enabled)}", "false");
 
         foreach (var (key, value) in _settings)
         {

@@ -11,7 +11,7 @@ public sealed class TypedMergerTests
 
     private static (Identity Reporter, Timestamp Time) Meta()
     {
-        return (new Identity { StringIdentity = "TEST" }, Timestamp.FromDateTimeOffset(T0));
+        return (new Identity { StringIdentity = TestHelpers.TestReporterId }, Timestamp.FromDateTimeOffset(T0));
     }
 
     [Fact]

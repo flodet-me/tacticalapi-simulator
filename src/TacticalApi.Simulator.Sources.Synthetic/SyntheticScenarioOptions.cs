@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TacticalApi.Simulator.Core.Configuration;
 
 namespace TacticalApi.Simulator.Sources.Synthetic;
 
@@ -9,7 +10,7 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// </summary>
 public sealed class SyntheticScenarioOptions
 {
-    public const string SectionName = "Simulator:Sources:SyntheticScenario";
+    public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticScenario";
 
     public bool Enabled { get; set; } = true;
 

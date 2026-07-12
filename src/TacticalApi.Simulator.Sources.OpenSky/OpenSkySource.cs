@@ -24,9 +24,9 @@ public sealed class OpenSkySource(
     ILogger<OpenSkySource> logger)
     : ISimulationSource
 {
-    public const string HttpClientName = "OpenSky";
+    public static readonly string HttpClientName = SimulationSourceName.FromSectionName(OpenSkyOptions.SectionName);
 
-    public string Name => "OpenSky";
+    public string Name => HttpClientName;
 
     public bool Enabled => options.CurrentValue.Enabled;
 

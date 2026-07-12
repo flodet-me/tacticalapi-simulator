@@ -11,6 +11,8 @@ namespace TacticalApi.Simulator.Tests;
 
 internal static class TestHelpers
 {
+    internal const string TestReporterId = "TEST";
+
     internal static IOptionsMonitor<SimulatorOptions> Options(SimulatorOptions? options = null)
     {
         return new StaticOptionsMonitor(options ?? new SimulatorOptions());
@@ -37,7 +39,7 @@ internal static class TestHelpers
         var symbol = new UpdateSymbol
         {
             Identity = new Identity { StringIdentity = id },
-            Reporter = new Identity { StringIdentity = "TEST" },
+            Reporter = new Identity { StringIdentity = TestReporterId },
             ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
         };
 
@@ -73,7 +75,7 @@ internal static class TestHelpers
         return new DeleteSituationObject
         {
             Identity = new Identity { StringIdentity = id },
-            Reporter = new Identity { StringIdentity = "TEST" },
+            Reporter = new Identity { StringIdentity = TestReporterId },
             ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
         };
     }

@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Core.Configuration;
 
 namespace TacticalApi.Simulator.Sources.Synthetic;
 
@@ -8,9 +8,12 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 ///     "Simulator:Sources:SyntheticAirTracks" and read via IOptionsMonitor, so
 ///     TrackCount / UpdateInterval / speeds can be changed while running.
 /// </summary>
-public sealed class SyntheticAirTrackOptions
+public sealed class SyntheticAirTrackOptions() : TrackEmitterOptions(
+    symbolCode: "SFAPMF---------", // friendly air, MIL-STD-2525C
+    reporterId: "SIM-SYNTH-AIR",
+    trackTimeToLive: TimeSpan.FromSeconds(30))
 {
-    public const string SectionName = "Simulator:Sources:SyntheticAirTracks";
+    public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticAirTracks";
 
     public bool Enabled { get; set; } = true;
 
@@ -33,16 +36,4 @@ public sealed class SyntheticAirTrackOptions
 
     /// <summary>Deterministic seed so the picture is reproducible.</summary>
     public int Seed { get; set; } = 42;
-
-    /// <summary>Symbol code applied to generated tracks (default: friendly air, MIL-STD-2525C).</summary>
-    [Required]
-    public string SymbolCode { get; set; } = "SFAPMF---------";
-
-    public SymbolCatalog SymbolCatalog { get; set; } = SymbolCatalog.Mil2525C;
-
-    /// <summary>How long a track survives without a new report before expiring.</summary>
-    [Range(typeof(TimeSpan), "00:00:01", "01:00:00")]
-    public TimeSpan TrackTimeToLive { get; set; } = TimeSpan.FromSeconds(30);
-
-    [Required] public string ReporterId { get; set; } = "SIM-SYNTH-AIR";
 }

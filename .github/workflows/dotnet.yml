@@ -22,20 +22,13 @@ jobs:
       - name: Checkout (including TacticalAPI submodule)
         uses: actions/checkout@v7
         with:
+          # Pulls external/tacticalapi (Rheinmetall/tacticalapi) at the
+          # commit pinned in this repository.
           submodules: recursive
           fetch-depth: 1
 
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-env
 
       - name: Restore
         run: dotnet restore
@@ -49,25 +42,14 @@ jobs:
       - name: Checkout (including TacticalAPI submodule)
         uses: actions/checkout@v7
         with:
-          # Pulls external/tacticalapi (Rheinmetall/tacticalapi) at the
-          # commit pinned in this repository.
           submodules: recursive
           fetch-depth: 1
 
       - name: Verify TacticalAPI protos are present
         run: test -f external/tacticalapi/rheinmetall/tactical_api/v0/situation_service.proto
 
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-env
 
       - name: Restore
         run: dotnet restore
@@ -75,15 +57,18 @@ jobs:
       - name: Compute build version
         id: version
         run: |
+          # Directory.Build.props is the single source of truth for the base
+          # version; CI only appends the run number + commit sha.
+          version_prefix=$(dotnet msbuild src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj -getProperty:VersionPrefix)
           short_sha="${GITHUB_SHA::7}"
           version_suffix="ci.${{ github.run_number }}+${short_sha}"
           artifact_suffix="${{ github.run_number }}-${short_sha}"
-          full_version="0.1.0-${version_suffix}"
+          full_version="${version_prefix}-${version_suffix}"
           echo "version_suffix=${version_suffix}" >> "$GITHUB_OUTPUT"
           echo "artifact_suffix=${artifact_suffix}" >> "$GITHUB_OUTPUT"
           echo "full_version=${full_version}" >> "$GITHUB_OUTPUT"
           # Docker tags don't allow "+", unlike semver build metadata.
-          echo "image_tag=0.1.0-${artifact_suffix}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${version_prefix}-${artifact_suffix}" >> "$GITHUB_OUTPUT"
           echo "Version: ${full_version}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
@@ -155,10 +140,8 @@ jobs:
       - name: Move submodule to upstream HEAD
         run: git submodule update --init --remote external/tacticalapi
 
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-env
 
       - name: Build against latest contract
         run: dotnet build --configuration Release

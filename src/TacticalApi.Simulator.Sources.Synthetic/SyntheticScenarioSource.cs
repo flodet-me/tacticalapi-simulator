@@ -49,7 +49,7 @@ public sealed class SyntheticScenarioSource(
     private int _chatCounter;
     private int _eventCounter;
 
-    public string Name => "SyntheticScenario";
+    public string Name => SimulationSourceName.FromSectionName(SyntheticScenarioOptions.SectionName);
 
     public bool Enabled => options.CurrentValue.Enabled;
 

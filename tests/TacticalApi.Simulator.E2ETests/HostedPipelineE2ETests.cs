@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Sources.Synthetic;
 using Xunit;
 
 namespace TacticalApi.Simulator.E2ETests;
@@ -16,10 +18,10 @@ public sealed class HostedPipelineE2ETests
     {
         using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
-            ["Simulator:Sources:SyntheticScenario:Enabled"] = "true",
-            ["Simulator:Sources:SyntheticScenario:UpdateInterval"] = "00:00:00.500",
-            ["Simulator:Sources:SyntheticScenario:EventProbability"] = "1.0",
-            ["Simulator:Sources:SyntheticScenario:ChatProbability"] = "1.0",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "true",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.UpdateInterval)}"] = "00:00:00.500",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.EventProbability)}"] = "1.0",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.ChatProbability)}"] = "1.0",
         });
         var client = factory.CreateGrpcClient();
         var expectedCases = Enum.GetValues<SituationObject.TypeOneofCase>()
@@ -48,7 +50,7 @@ public sealed class HostedPipelineE2ETests
     {
         using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
-            ["Simulator:ExpirySweepInterval"] = "00:00:01",
+            [$"{SimulatorOptions.SectionName}:{nameof(SimulatorOptions.ExpirySweepInterval)}"] = "00:00:01",
         });
         var client = factory.CreateGrpcClient();
         var id = $"e2e:expiring:{Guid.NewGuid():N}";

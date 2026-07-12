@@ -17,7 +17,7 @@ public sealed class SyntheticAirTrackSource(
     private const double EarthRadiusKm = 6371.0;
     private readonly DateTimeOffset _epoch = timeProvider.GetUtcNow();
 
-    public string Name => "SyntheticAirTracks";
+    public string Name => SimulationSourceName.FromSectionName(SyntheticAirTrackOptions.SectionName);
 
     public bool Enabled => options.CurrentValue.Enabled;
 

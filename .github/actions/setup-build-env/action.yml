@@ -1,0 +1,27 @@
+name: Set up build environment
+description: >
+  Install the .NET SDK and restore the NuGet cache. Shared by every job in
+  dotnet.yml so the SDK version and cache key are defined exactly once.
+  Requires the repository to already be checked out (a local composite
+  action can't check itself out before it's loaded).
+
+inputs:
+  dotnet-version:
+    description: .NET SDK version to install (passed to actions/setup-dotnet).
+    required: false
+    default: "10.0.x"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+        restore-keys: nuget-${{ runner.os }}-
