@@ -20,6 +20,7 @@
 
         apps = {
             format = import ./.nix/format.nix { inherit pkgs dotnet-sdk; };
+            ci-local = import ./.nix/ci-local.nix { inherit pkgs; };
         };
       }
     );

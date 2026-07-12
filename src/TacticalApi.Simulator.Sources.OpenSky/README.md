@@ -1,6 +1,6 @@
 # TacticalApi.Simulator.Sources.OpenSky
 
-Live data source: polls the public [OpenSky Network](https://opensky-network.org/) REST API for real aircraft state vectors and maps every aircraft inside a configurable bounding box onto a TacticalAPI `Symbol` update. This is the reference implementation for plugging any other online tracker (AIS ships, ADS-B, ...) into the simulator — see the root README's "Adding your own data source".
+Live data source: polls the public [OpenSky Network](https://opensky-network.org/) REST API for real aircraft state vectors and maps every aircraft inside a configurable bounding box onto a TacticalAPI `Symbol` update. This is the reference implementation for plugging any other online tracker (AIS ships, ADS-B, ...) into the simulator — see [Extending the simulator](../../docs/EXTENDING.md).
 
 ## `OpenSkySource`
 

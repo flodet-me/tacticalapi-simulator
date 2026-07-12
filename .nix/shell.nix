@@ -6,6 +6,7 @@ pkgs.mkShell {
             pkgs.icu # Required for .NET globalization
             pkgs.openssl
             pkgs.zlib
+            pkgs.act # Run .github/workflows/dotnet.yml locally (needs Docker); see docs/CI.md
           ];
 
           # Set environment variables for .NET

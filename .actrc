@@ -1,0 +1,5 @@
+# act (https://github.com/nektos/act) runs .github/workflows/dotnet.yml locally
+# in Docker. The default "micro" runner images act ships are too bare (no
+# Node.js, no docker CLI) for this workflow's composite action and Docker
+# build step, so pin the fuller image here instead of requiring -P every time.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
