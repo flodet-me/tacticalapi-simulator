@@ -122,7 +122,8 @@ public sealed class NwsAlertSource(
         IReadOnlyList<(double Lat, double Lon)> ring, MessagePrecedenceType precedence)
     {
         var line = new Line { LocationTime = reportingTime, Name = eventName };
-        foreach (var (lat, lon) in ring) line.Points.Add(new GeoPoint { LatitudeCoordinate = lat, LongitudeCoordinate = lon });
+        foreach (var (lat, lon) in ring)
+            line.Points.Add(new GeoPoint { LatitudeCoordinate = lat, LongitudeCoordinate = lon });
 
         return new UpdateSituationObject
         {

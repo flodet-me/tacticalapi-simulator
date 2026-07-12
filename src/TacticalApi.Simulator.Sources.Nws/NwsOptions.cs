@@ -11,9 +11,9 @@ namespace TacticalApi.Simulator.Sources.Nws;
 ///     <see cref="Area" /> filter rather than a bounding box.
 /// </summary>
 public sealed class NwsOptions() : TrackEmitterOptions(
-    symbolCode: "GHGPGPO---****X", // illustrative hazard/installation marker; MIL-STD-2525C has no native weather symbology
-    reporterId: "SIM-NWS",
-    trackTimeToLive: TimeSpan.FromMinutes(15))
+    "GHGPGPO---****X", // illustrative hazard/installation marker; MIL-STD-2525C has no native weather symbology
+    "SIM-NWS",
+    TimeSpan.FromMinutes(15))
 {
     public const string SectionName = SimulatorOptions.SourcesSectionName + ":Nws";
 
@@ -23,7 +23,8 @@ public sealed class NwsOptions() : TrackEmitterOptions(
     [Required] public Uri BaseAddress { get; set; } = new("https://api.weather.gov/");
 
     /// <summary>Two-letter US state/territory code (NWS "area" filter, e.g. "OK", "TX", "FL").</summary>
-    [Required, RegularExpression("^[A-Z]{2}$")]
+    [Required]
+    [RegularExpression("^[A-Z]{2}$")]
     public string Area { get; set; } = "OK";
 
     [Range(typeof(TimeSpan), "00:00:30", "01:00:00")]

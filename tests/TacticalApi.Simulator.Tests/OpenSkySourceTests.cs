@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Net;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
-using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Sources.OpenSky;
 using Xunit;
 
@@ -54,7 +54,7 @@ public sealed class OpenSkySourceTests
     public async Task ProduceAsync_BlankCallsign_FallsBackToUppercasedIcao24()
     {
         // Arrange
-        var source = CreateSource(StatesResponse(StateRow(icao24: "a1b2c3", callsign: "   ")));
+        var source = CreateSource(StatesResponse(StateRow("a1b2c3", "   ")));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -94,9 +94,9 @@ public sealed class OpenSkySourceTests
     {
         // Arrange: no identity, no position, and one valid row.
         var source = CreateSource(StatesResponse(
-            StateRow(icao24: null),
+            StateRow(null),
             StateRow(latitude: null),
-            StateRow(icao24: "valid1")));
+            StateRow("valid1")));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -111,7 +111,7 @@ public sealed class OpenSkySourceTests
         // Arrange
         var options = new OpenSkyOptions { MaxTracksPerPoll = 2 };
         var source = CreateSource(
-            StatesResponse(StateRow(icao24: "a1"), StateRow(icao24: "a2"), StateRow(icao24: "a3")), options);
+            StatesResponse(StateRow("a1"), StateRow("a2"), StateRow("a3")), options);
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -202,7 +202,7 @@ public sealed class OpenSkySourceTests
             onRequest?.Invoke(request.RequestUri!);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(responseBody, System.Text.Encoding.UTF8, "application/json")
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
             });
         }
     }

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Sources.Nws;
@@ -48,7 +49,7 @@ public sealed class NwsAlertSourceTests
     public async Task ProduceAsync_AlertWithoutGeometry_EmitsOnlyTextDocument()
     {
         // Arrange: most alerts (e.g. area-based statements) carry no polygon.
-        var source = CreateSource(FeaturesResponse(Feature(id: "a1", eventName: "Beach Hazards Statement")));
+        var source = CreateSource(FeaturesResponse(Feature("a1", "Beach Hazards Statement")));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -64,7 +65,7 @@ public sealed class NwsAlertSourceTests
     {
         // Arrange
         var source = CreateSource(FeaturesResponse(Feature(
-            id: "a2", eventName: "Flood Warning",
+            "a2", "Flood Warning",
             polygon: "[-96,36],[-95,36],[-95,37],[-96,37],[-96,36]")));
 
         // Act
@@ -80,8 +81,8 @@ public sealed class NwsAlertSourceTests
         var point = symbol.Location.Content.Point.GeoPoint;
         // Plain average of all 5 ring points (GeoJSON repeats the first point to
         // close the ring, so it's weighted double) - not a true polygon centroid.
-        Assert.Equal(36.4, point.LatitudeCoordinate, precision: 3);
-        Assert.Equal(-95.6, point.LongitudeCoordinate, precision: 3);
+        Assert.Equal(36.4, point.LatitudeCoordinate, 3);
+        Assert.Equal(-95.6, point.LongitudeCoordinate, 3);
 
         var sketch = updates.Single(u => u.TypeCase == UpdateSituationObject.TypeOneofCase.SketchDocument)
             .SketchDocument;
@@ -94,7 +95,7 @@ public sealed class NwsAlertSourceTests
         // Arrange: NWS occasionally attaches a Point (or other non-Polygon)
         // geometry; only Polygon rings are turned into a symbol/sketch.
         var source = CreateSource(FeaturesResponse(Feature(
-            id: "a8", eventName: "Special Weather Statement",
+            "a8", "Special Weather Statement",
             rawGeometry: """{"type":"Point","coordinates":[-95.6,36.4]}""")));
 
         // Act
@@ -109,7 +110,7 @@ public sealed class NwsAlertSourceTests
     {
         // Arrange: malformed/empty coordinates array (no rings at all).
         var source = CreateSource(FeaturesResponse(Feature(
-            id: "a9", eventName: "Malformed Alert",
+            "a9", "Malformed Alert",
             rawGeometry: """{"type":"Polygon","coordinates":[]}""")));
 
         // Act
@@ -124,7 +125,7 @@ public sealed class NwsAlertSourceTests
     {
         // Arrange
         var before = DateTimeOffset.UtcNow;
-        var source = CreateSource(FeaturesResponse(Feature(id: "a10", eventName: "No Sent Timestamp", sent: null)));
+        var source = CreateSource(FeaturesResponse(Feature("a10", "No Sent Timestamp", sent: null)));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -142,7 +143,7 @@ public sealed class NwsAlertSourceTests
         var options = new NwsOptions { TrackTimeToLive = TimeSpan.FromMinutes(20) };
         var before = DateTimeOffset.UtcNow;
         var source = CreateSource(
-            FeaturesResponse(Feature(id: "a11", eventName: "No Expiry Timestamp", expires: null)), options);
+            FeaturesResponse(Feature("a11", "No Expiry Timestamp", expires: null)), options);
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -163,7 +164,7 @@ public sealed class NwsAlertSourceTests
     public async Task ProduceAsync_MapsCapSeverityToMessagePrecedence(string severity, MessagePrecedenceType expected)
     {
         // Arrange
-        var source = CreateSource(FeaturesResponse(Feature(id: "a3", eventName: "Test Alert", severity: severity)));
+        var source = CreateSource(FeaturesResponse(Feature("a3", "Test Alert", severity)));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -177,9 +178,9 @@ public sealed class NwsAlertSourceTests
     {
         // Arrange
         var source = CreateSource(FeaturesResponse(
-            Feature(id: null, eventName: "Has no id"),
-            Feature(id: "a4", eventName: null),
-            Feature(id: "a5", eventName: "Valid Alert")));
+            Feature(null, "Has no id"),
+            Feature("a4", null),
+            Feature("a5", "Valid Alert")));
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -194,7 +195,7 @@ public sealed class NwsAlertSourceTests
         // Arrange
         var options = new NwsOptions { MaxAlertsPerPoll = 1 };
         var source = CreateSource(
-            FeaturesResponse(Feature(id: "a6", eventName: "One"), Feature(id: "a7", eventName: "Two")), options);
+            FeaturesResponse(Feature("a6", "One"), Feature("a7", "Two")), options);
 
         // Act
         var updates = await source.ProduceAsync(CancellationToken.None);
@@ -268,7 +269,7 @@ public sealed class NwsAlertSourceTests
             onRequest?.Invoke(request.RequestUri!);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(responseBody, System.Text.Encoding.UTF8, "application/json")
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
             });
         }
     }

@@ -9,9 +9,9 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 ///     TrackCount / UpdateInterval / speeds can be changed while running.
 /// </summary>
 public sealed class SyntheticAirTrackOptions() : TrackEmitterOptions(
-    symbolCode: "SFAPMF---------", // friendly air, MIL-STD-2525C
-    reporterId: "SIM-SYNTH-AIR",
-    trackTimeToLive: TimeSpan.FromSeconds(30))
+    "SFAPMF---------", // friendly air, MIL-STD-2525C
+    "SIM-SYNTH-AIR",
+    TimeSpan.FromSeconds(30))
 {
     public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticAirTracks";
 

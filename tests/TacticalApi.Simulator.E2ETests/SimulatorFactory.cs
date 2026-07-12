@@ -10,9 +10,9 @@ using TacticalApi.Simulator.Sources.Synthetic;
 namespace TacticalApi.Simulator.E2ETests;
 
 /// <summary>
-/// Boots the REAL simulator host (Program.cs, full DI, gRPC pipeline) on an
-/// in-memory TestServer. Simulation sources are disabled by default so tests
-/// are deterministic; individual fixtures re-enable them via settings.
+///     Boots the REAL simulator host (Program.cs, full DI, gRPC pipeline) on an
+///     in-memory TestServer. Simulation sources are disabled by default so tests
+///     are deterministic; individual fixtures re-enable them via settings.
 /// </summary>
 public class SimulatorFactory : WebApplicationFactory<Program>
 {
@@ -26,22 +26,23 @@ public class SimulatorFactory : WebApplicationFactory<Program>
 
     /// <summary>Used by tests that need specific configuration overrides.</summary>
     internal SimulatorFactory(Dictionary<string, string?>? settings = null)
-        => _settings = settings ?? new Dictionary<string, string?>();
+    {
+        _settings = settings ?? new Dictionary<string, string?>();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("E2ETest");
 
         // Deterministic baseline: no background sources unless a test opts in.
-        builder.UseSetting($"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}", "false");
-        builder.UseSetting($"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}", "false");
+        builder.UseSetting($"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}",
+            "false");
+        builder.UseSetting($"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}",
+            "false");
         builder.UseSetting($"{OpenSkyOptions.SectionName}:{nameof(OpenSkyOptions.Enabled)}", "false");
         builder.UseSetting($"{NwsOptions.SectionName}:{nameof(NwsOptions.Enabled)}", "false");
 
-        foreach (var (key, value) in _settings)
-        {
-            builder.UseSetting(key, value);
-        }
+        foreach (var (key, value) in _settings) builder.UseSetting(key, value);
     }
 
     /// <summary>Native gRPC client (HTTP/2) against the in-memory server.</summary>
@@ -49,20 +50,20 @@ public class SimulatorFactory : WebApplicationFactory<Program>
     {
         var channel = GrpcChannel.ForAddress(Server.BaseAddress, new GrpcChannelOptions
         {
-            HttpHandler = Server.CreateHandler(),
+            HttpHandler = Server.CreateHandler()
         });
         return new Situation.SituationClient(channel);
     }
 
     /// <summary>
-    /// gRPC-Web client (HTTP/1.1) - the transport the official Rheinmetall
-    /// test client uses.
+    ///     gRPC-Web client (HTTP/1.1) - the transport the official Rheinmetall
+    ///     test client uses.
     /// </summary>
     public Situation.SituationClient CreateGrpcWebClient()
     {
         var channel = GrpcChannel.ForAddress(Server.BaseAddress, new GrpcChannelOptions
         {
-            HttpHandler = new GrpcWebHandler(GrpcWebMode.GrpcWeb, Server.CreateHandler()),
+            HttpHandler = new GrpcWebHandler(GrpcWebMode.GrpcWeb, Server.CreateHandler())
         });
         return new Situation.SituationClient(channel);
     }

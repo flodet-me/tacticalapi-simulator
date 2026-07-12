@@ -8,8 +8,8 @@ using Xunit;
 namespace TacticalApi.Simulator.E2ETests;
 
 /// <summary>
-/// E2E tests for the hosted parts: the scenario source feeding the situation
-/// in the background, the expiry sweeper, and the HTTP status endpoint.
+///     E2E tests for the hosted parts: the scenario source feeding the situation
+///     in the background, the expiry sweeper, and the HTTP status endpoint.
 /// </summary>
 public sealed class HostedPipelineE2ETests
 {
@@ -19,9 +19,10 @@ public sealed class HostedPipelineE2ETests
         using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "true",
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.UpdateInterval)}"] = "00:00:00.500",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.UpdateInterval)}"] =
+                "00:00:00.500",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.EventProbability)}"] = "1.0",
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.ChatProbability)}"] = "1.0",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.ChatProbability)}"] = "1.0"
         });
         var client = factory.CreateGrpcClient();
         var expectedCases = Enum.GetValues<SituationObject.TypeOneofCase>()
@@ -34,10 +35,7 @@ public sealed class HostedPipelineE2ETests
             var get = await client.GetSituationObjectsAsync(
                 new GetSituationObjectsRequest(), cancellationToken: cts.Token);
             var presentCases = get.SituationObjects.Select(o => o.TypeCase).ToHashSet();
-            if (expectedCases.IsSubsetOf(presentCases))
-            {
-                return; // every object type of the contract observed over gRPC
-            }
+            if (expectedCases.IsSubsetOf(presentCases)) return; // every object type of the contract observed over gRPC
 
             await Task.Delay(250, cts.Token);
         }
@@ -50,7 +48,7 @@ public sealed class HostedPipelineE2ETests
     {
         using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
-            [$"{SimulatorOptions.SectionName}:{nameof(SimulatorOptions.ExpirySweepInterval)}"] = "00:00:01",
+            [$"{SimulatorOptions.SectionName}:{nameof(SimulatorOptions.ExpirySweepInterval)}"] = "00:00:01"
         });
         var client = factory.CreateGrpcClient();
         var id = $"e2e:expiring:{Guid.NewGuid():N}";
@@ -59,7 +57,7 @@ public sealed class HostedPipelineE2ETests
 
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, now, name: "SHORT-LIVED", expiry: now.AddSeconds(1)) },
+            SituationObjects = { E2E.Symbol(id, now, "SHORT-LIVED", expiry: now.AddSeconds(1)) }
         }, cancellationToken: cts.Token);
 
         while (!cts.IsCancellationRequested)
@@ -69,9 +67,7 @@ public sealed class HostedPipelineE2ETests
             if (!get.SituationObjects.Any(o =>
                     o.TypeCase == SituationObject.TypeOneofCase.Symbol &&
                     o.Symbol.Identity?.StringIdentity == id))
-            {
                 return; // expired object no longer part of the snapshot
-            }
 
             await Task.Delay(500, cts.Token);
         }
@@ -88,7 +84,7 @@ public sealed class HostedPipelineE2ETests
 
         await grpc.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol($"e2e:status:{Guid.NewGuid():N}", DateTimeOffset.UtcNow, name: "X") },
+            SituationObjects = { E2E.Symbol($"e2e:status:{Guid.NewGuid():N}", DateTimeOffset.UtcNow, "X") }
         });
 
         var status = await http.GetFromJsonAsync<JsonElement>("/");

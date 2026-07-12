@@ -43,13 +43,13 @@ app.MapGrpcReflectionService();
 app.MapGet("/", (SituationStore store,
     SituationEventBroker broker,
     IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
-    {
-        service = "TacticalAPI Simulator",
-        proto = "rheinmetall.tactical_api.v0.Situation",
-        situationObjects = store.Count,
-        subscribers = broker.SubscriberCount,
-        reporterId = options.CurrentValue.ReporterId
-    }));
+{
+    service = "TacticalAPI Simulator",
+    proto = "rheinmetall.tactical_api.v0.Situation",
+    situationObjects = store.Count,
+    subscribers = broker.SubscriberCount,
+    reporterId = options.CurrentValue.ReporterId
+}));
 
 app.Run();
 

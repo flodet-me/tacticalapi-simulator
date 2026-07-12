@@ -71,7 +71,8 @@ public sealed class IdentityKeyTests
         var int64Id = new Identity { Int64Identity = 42L };
 
         // Act
-        var keys = new[] { IdentityKey.TryCreate(stringId), IdentityKey.TryCreate(int32Id), IdentityKey.TryCreate(int64Id) };
+        var keys = new[]
+            { IdentityKey.TryCreate(stringId), IdentityKey.TryCreate(int32Id), IdentityKey.TryCreate(int64Id) };
 
         // Assert
         Assert.Equal(3, keys.Distinct().Count());

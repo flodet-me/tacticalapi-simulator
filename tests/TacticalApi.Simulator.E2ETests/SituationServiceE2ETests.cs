@@ -4,8 +4,8 @@ using Xunit;
 namespace TacticalApi.Simulator.E2ETests;
 
 /// <summary>
-/// End-to-end tests running the real host and talking to it through actual
-/// gRPC calls (in-memory transport, full ASP.NET Core pipeline).
+///     End-to-end tests running the real host and talking to it through actual
+///     gRPC calls (in-memory transport, full ASP.NET Core pipeline).
 /// </summary>
 public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassFixture<SimulatorFactory>
 {
@@ -19,7 +19,7 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         var addResponse = await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0, name: "ALPHA", latitude: 53.0, longitude: 8.8) },
+            SituationObjects = { E2E.Symbol(id, T0, "ALPHA", 53.0, 8.8) }
         });
         Assert.True(addResponse.Header.Success, addResponse.Header.ErrorMessage);
 
@@ -38,13 +38,13 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0, name: "BRAVO", latitude: 53.0, longitude: 8.8) },
+            SituationObjects = { E2E.Symbol(id, T0, "BRAVO", 53.0, 8.8) }
         });
 
         // Move the object without touching the name.
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0.AddSeconds(1), latitude: 54.0, longitude: 9.0) },
+            SituationObjects = { E2E.Symbol(id, T0.AddSeconds(1), latitude: 54.0, longitude: 9.0) }
         });
 
         var get = await client.GetSituationObjectsAsync(new GetSituationObjectsRequest());
@@ -61,12 +61,12 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0, name: "CHARLIE") },
+            SituationObjects = { E2E.Symbol(id, T0, "CHARLIE") }
         });
 
         var deleteResponse = await client.DeleteSituationObjectsAsync(new DeleteSituationObjectsRequest
         {
-            SituationObjects = { E2E.Delete(id, T0.AddSeconds(1)) },
+            SituationObjects = { E2E.Delete(id, T0.AddSeconds(1)) }
         });
         Assert.True(deleteResponse.Header.Success);
 
@@ -81,7 +81,7 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         var response = await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { new UpdateSituationObject() }, // oneof not set
+            SituationObjects = { new UpdateSituationObject() } // oneof not set
         });
 
         Assert.False(response.Header.Success);
@@ -99,7 +99,7 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
         // One object BEFORE subscribing -> must arrive via the snapshot.
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(snapshotId, T0, name: "SNAP") },
+            SituationObjects = { E2E.Symbol(snapshotId, T0, "SNAP") }
         }, cancellationToken: cts.Token);
 
         using var call = client.SubscribeSituationObjectEvents(
@@ -112,9 +112,7 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
         {
             Assert.True(call.ResponseStream.Current.Header.Success);
             foreach (var obj in call.ResponseStream.Current.SituationObjects)
-            {
                 seen.Add(obj.Symbol?.Identity?.StringIdentity ?? string.Empty);
-            }
 
             if (seen.Contains(snapshotId) && !sentLive)
             {
@@ -122,14 +120,11 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
                 sentLive = true;
                 await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
                 {
-                    SituationObjects = { E2E.Symbol(liveId, T0.AddSeconds(2), name: "LIVE") },
+                    SituationObjects = { E2E.Symbol(liveId, T0.AddSeconds(2), "LIVE") }
                 }, cancellationToken: cts.Token);
             }
 
-            if (seen.Contains(snapshotId) && seen.Contains(liveId))
-            {
-                return; // both snapshot and live delivery proven
-            }
+            if (seen.Contains(snapshotId) && seen.Contains(liveId)) return; // both snapshot and live delivery proven
         }
 
         Assert.Fail("Stream ended before snapshot and live event were received.");
@@ -143,7 +138,7 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         var addResponse = await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0, name: "WEB") },
+            SituationObjects = { E2E.Symbol(id, T0, "WEB") }
         });
         Assert.True(addResponse.Header.Success);
 
@@ -159,11 +154,11 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
 
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0.AddMinutes(1), name: "NEW") },
+            SituationObjects = { E2E.Symbol(id, T0.AddMinutes(1), "NEW") }
         });
         await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
         {
-            SituationObjects = { E2E.Symbol(id, T0, name: "OLD") },
+            SituationObjects = { E2E.Symbol(id, T0, "OLD") }
         });
 
         var get = await client.GetSituationObjectsAsync(new GetSituationObjectsRequest());
@@ -172,7 +167,12 @@ public sealed class SituationServiceE2ETests(SimulatorFactory factory) : IClassF
     }
 
     private static bool Matches(SituationObject obj, string id)
-        => obj.TypeCase == SituationObject.TypeOneofCase.Symbol && obj.Symbol.Identity?.StringIdentity == id;
+    {
+        return obj.TypeCase == SituationObject.TypeOneofCase.Symbol && obj.Symbol.Identity?.StringIdentity == id;
+    }
 
-    private static string Unique(string prefix) => $"e2e:{prefix}:{Guid.NewGuid():N}";
+    private static string Unique(string prefix)
+    {
+        return $"e2e:{prefix}:{Guid.NewGuid():N}";
+    }
 }

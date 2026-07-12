@@ -53,4 +53,48 @@ public sealed class RouteMergerTests
         // Copy-on-write: the original instance is untouched.
         Assert.Equal(2, created.Route.LineWidth.Content);
     }
+
+    [Fact]
+    public void Merge_IgnoresUpdateWithSameOrOlderReportingTime()
+    {
+        // Arrange
+        var (reporter, time) = TestHelpers.Meta(T0);
+        var merger = new RouteMerger();
+        var created = merger.Merge(null, new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "r1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                LineWidth = new UpdatePropertyInt { Content = 2 }
+            }
+        });
+
+        // Act: same reporting time, then an older one - neither is strictly newer.
+        var sameTime = merger.Merge(created, new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "r1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                LineWidth = new UpdatePropertyInt { Content = 99 }
+            }
+        });
+        var olderTime = merger.Merge(created, new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "r1" },
+                Reporter = reporter,
+                ReportingTime = Timestamp.FromDateTimeOffset(T0.AddSeconds(-1)),
+                LineWidth = new UpdatePropertyInt { Content = 99 }
+            }
+        });
+
+        // Assert
+        Assert.Equal(2, sameTime.Route.LineWidth.Content);
+        Assert.Equal(2, olderTime.Route.LineWidth.Content);
+    }
 }

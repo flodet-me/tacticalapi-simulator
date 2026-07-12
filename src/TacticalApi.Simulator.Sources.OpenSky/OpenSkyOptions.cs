@@ -9,9 +9,9 @@ namespace TacticalApi.Simulator.Sources.OpenSky;
 ///     keep PollInterval conservative (>= 10s recommended).
 /// </summary>
 public sealed class OpenSkyOptions() : TrackEmitterOptions(
-    symbolCode: "SNAPCF---------", // neutral air, MIL-STD-2525C
-    reporterId: "SIM-OPENSKY",
-    trackTimeToLive: TimeSpan.FromMinutes(2))
+    "SNAPCF---------", // neutral air, MIL-STD-2525C
+    "SIM-OPENSKY",
+    TimeSpan.FromMinutes(2))
 {
     public const string SectionName = SimulatorOptions.SourcesSectionName + ":OpenSky";
 

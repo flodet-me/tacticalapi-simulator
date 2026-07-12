@@ -19,16 +19,12 @@ internal static class E2E
         {
             Identity = new Identity { StringIdentity = id },
             Reporter = new Identity { StringIdentity = "E2E" },
-            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime),
+            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
         };
 
-        if (name is not null)
-        {
-            symbol.Name = new UpdatePropertyString { Content = name };
-        }
+        if (name is not null) symbol.Name = new UpdatePropertyString { Content = name };
 
         if (latitude is not null && longitude is not null)
-        {
             symbol.Location = new UpdatePropertyLocation
             {
                 Content = new SymbolLocation
@@ -39,28 +35,28 @@ internal static class E2E
                         GeoPoint = new GeoPoint
                         {
                             LatitudeCoordinate = latitude.Value,
-                            LongitudeCoordinate = longitude.Value,
-                        },
-                    },
-                },
+                            LongitudeCoordinate = longitude.Value
+                        }
+                    }
+                }
             };
-        }
 
         if (expiry is not null)
-        {
             symbol.ExpiryTime = new UpdatePropertyTimestamp
             {
-                Content = Timestamp.FromDateTimeOffset(expiry.Value),
+                Content = Timestamp.FromDateTimeOffset(expiry.Value)
             };
-        }
 
         return new UpdateSituationObject { Symbol = symbol };
     }
 
-    internal static DeleteSituationObject Delete(string id, DateTimeOffset reportingTime) => new()
+    internal static DeleteSituationObject Delete(string id, DateTimeOffset reportingTime)
     {
-        Identity = new Identity { StringIdentity = id },
-        Reporter = new Identity { StringIdentity = "E2E" },
-        ReportingTime = Timestamp.FromDateTimeOffset(reportingTime),
-    };
+        return new DeleteSituationObject
+        {
+            Identity = new Identity { StringIdentity = id },
+            Reporter = new Identity { StringIdentity = "E2E" },
+            ReportingTime = Timestamp.FromDateTimeOffset(reportingTime)
+        };
+    }
 }

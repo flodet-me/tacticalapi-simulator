@@ -19,8 +19,7 @@ public abstract class TrackEmitterOptions
         TrackTimeToLive = trackTimeToLive;
     }
 
-    [Required]
-    public string SymbolCode { get; set; }
+    [Required] public string SymbolCode { get; set; }
 
     public SymbolCatalog SymbolCatalog { get; set; } = SymbolCatalog.Mil2525C;
 
@@ -28,6 +27,5 @@ public abstract class TrackEmitterOptions
     [Range(typeof(TimeSpan), "00:00:01", "01:00:00")]
     public TimeSpan TrackTimeToLive { get; set; }
 
-    [Required]
-    public string ReporterId { get; set; }
+    [Required] public string ReporterId { get; set; }
 }

@@ -1,4 +1,3 @@
-using Google.Protobuf.WellKnownTypes;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Merging;
 using Xunit;

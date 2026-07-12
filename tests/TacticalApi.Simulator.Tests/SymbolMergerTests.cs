@@ -41,4 +41,46 @@ public sealed class SymbolMergerTests
         var foreignKey = Assert.Contains("AIS", (IDictionary<string, DataPropertyIdentity>)created.Symbol.ForeignKeys);
         Assert.Equal("mmsi:123456", foreignKey.Content.StringIdentity);
     }
+
+    [Fact]
+    public void Merge_IgnoresForeignKeyUpdateWithSameOrOlderReportingTime()
+    {
+        // Arrange
+        var (reporter, time) = TestHelpers.Meta(T0);
+        var merger = new SymbolMerger();
+        var created = merger.Merge(null, new UpdateSituationObject
+        {
+            Symbol = new UpdateSymbol
+            {
+                Identity = new Identity { StringIdentity = "s1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                ForeignKey = new UpdatePropertyIdentity
+                {
+                    Source = "AIS",
+                    Content = new Identity { StringIdentity = "mmsi:123456" }
+                }
+            }
+        });
+
+        // Act: same reporting time as the stored foreign key entry - not strictly newer.
+        var merged = merger.Merge(created, new UpdateSituationObject
+        {
+            Symbol = new UpdateSymbol
+            {
+                Identity = new Identity { StringIdentity = "s1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                ForeignKey = new UpdatePropertyIdentity
+                {
+                    Source = "AIS",
+                    Content = new Identity { StringIdentity = "mmsi:999999" }
+                }
+            }
+        });
+
+        // Assert
+        var foreignKey = Assert.Contains("AIS", (IDictionary<string, DataPropertyIdentity>)merged.Symbol.ForeignKeys);
+        Assert.Equal("mmsi:123456", foreignKey.Content.StringIdentity);
+    }
 }

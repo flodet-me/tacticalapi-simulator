@@ -8,5 +8,7 @@ namespace TacticalApi.Simulator.Core.Sources;
 public static class SimulationSourceName
 {
     public static string FromSectionName(string sectionName)
-        => sectionName[(sectionName.LastIndexOf(':') + 1)..];
+    {
+        return sectionName[(sectionName.LastIndexOf(':') + 1)..];
+    }
 }

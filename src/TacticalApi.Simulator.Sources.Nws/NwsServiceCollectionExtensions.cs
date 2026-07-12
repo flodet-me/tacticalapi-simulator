@@ -12,7 +12,8 @@ public static class NwsServiceCollectionExtensions
         services.AddHttpClient(NwsAlertSource.HttpClientName, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(9);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("TacticalApiSimulator/1.0 (+https://github.com/Rheinmetall/tacticalapi)");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "TacticalApiSimulator/1.0 (+https://github.com/Rheinmetall/tacticalapi)");
         });
         services.AddOptions<NwsOptions>()
             .Bind(configuration.GetSection(NwsOptions.SectionName))

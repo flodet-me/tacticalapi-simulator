@@ -22,7 +22,7 @@ public sealed class SimulationSourceRunnerTests
     {
         // Arrange
         var source = new FakeSource(FastInterval, (_, _) => Task.FromResult<IReadOnlyList<UpdateSituationObject>>([]),
-            enabled: false);
+            false);
         var ingest = new FakeIngest();
         var runner = CreateRunner(source, ingest);
 
@@ -138,11 +138,11 @@ public sealed class SimulationSourceRunnerTests
         bool enabled = true) : ISimulationSource
     {
         private int _callCount;
+        public int CallCount => _callCount;
 
         public string Name => "Fake";
         public bool Enabled { get; } = enabled;
         public TimeSpan Interval { get; } = interval;
-        public int CallCount => _callCount;
 
         public Task<IReadOnlyList<UpdateSituationObject>> ProduceAsync(CancellationToken cancellationToken)
         {
