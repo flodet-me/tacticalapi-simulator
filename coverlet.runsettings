@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Code coverage configuration (coverlet collector).
+  Used by: dotnet test -\-settings coverlet.runsettings -\-collect:"XPlat Code Coverage"
+
+  The Contracts assembly is excluded because it contains only protoc-generated
+  code for the TacticalAPI contract; measuring it would say nothing about the
+  simulator itself. The CI gate enforces >= 80% line coverage on the rest
+  (Core, Sources, Host).
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>[TacticalApi.Simulator.Contracts]*</Exclude>
+          <ExcludeByAttribute>GeneratedCodeAttribute</ExcludeByAttribute>
+          <SkipAutoProps>true</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
