@@ -40,8 +40,10 @@ public sealed class NwsAlertSource(
         var client = httpClientFactory.CreateClient(HttpClientName);
         client.BaseAddress = o.BaseAddress;
 
+        // status=actual excludes NWS test/exercise broadcasts, which otherwise
+        // show up in the same feed as real alerts (rare, but it happens).
         using var document = await client
-            .GetFromJsonAsync<JsonDocument>($"alerts/active?area={o.Area}", cancellationToken)
+            .GetFromJsonAsync<JsonDocument>($"alerts/active?area={o.Area}&status=actual", cancellationToken)
             .ConfigureAwait(false);
         if (document is null || !document.RootElement.TryGetProperty("features", out var features) ||
             features.ValueKind != JsonValueKind.Array)

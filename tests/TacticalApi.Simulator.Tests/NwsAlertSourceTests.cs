@@ -27,6 +27,24 @@ public sealed class NwsAlertSourceTests
     }
 
     [Fact]
+    public async Task ProduceAsync_RequestsConfiguredAreaAndActualStatusFilter()
+    {
+        // Arrange: status=actual excludes NWS test/exercise broadcasts, which
+        // otherwise appear in the same "active" feed as real alerts.
+        Uri? requestedUri = null;
+        var options = new NwsOptions { Area = "TX" };
+        var source = CreateSource(FeaturesResponse(), options, uri => requestedUri = uri);
+
+        // Act
+        await source.ProduceAsync(CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(requestedUri);
+        Assert.Contains("area=TX", requestedUri.Query);
+        Assert.Contains("status=actual", requestedUri.Query);
+    }
+
+    [Fact]
     public async Task ProduceAsync_AlertWithoutGeometry_EmitsOnlyTextDocument()
     {
         // Arrange: most alerts (e.g. area-based statements) carry no polygon.
@@ -68,6 +86,72 @@ public sealed class NwsAlertSourceTests
         var sketch = updates.Single(u => u.TypeCase == UpdateSituationObject.TypeOneofCase.SketchDocument)
             .SketchDocument;
         Assert.Equal(5, sketch.Location.Content.Line.Points.Count);
+    }
+
+    [Fact]
+    public async Task ProduceAsync_NonPolygonGeometry_EmitsOnlyTextDocument()
+    {
+        // Arrange: NWS occasionally attaches a Point (or other non-Polygon)
+        // geometry; only Polygon rings are turned into a symbol/sketch.
+        var source = CreateSource(FeaturesResponse(Feature(
+            id: "a8", eventName: "Special Weather Statement",
+            rawGeometry: """{"type":"Point","coordinates":[-95.6,36.4]}""")));
+
+        // Act
+        var updates = await source.ProduceAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(UpdateSituationObject.TypeOneofCase.TextDocument, Assert.Single(updates).TypeCase);
+    }
+
+    [Fact]
+    public async Task ProduceAsync_PolygonWithNoRings_EmitsOnlyTextDocument()
+    {
+        // Arrange: malformed/empty coordinates array (no rings at all).
+        var source = CreateSource(FeaturesResponse(Feature(
+            id: "a9", eventName: "Malformed Alert",
+            rawGeometry: """{"type":"Polygon","coordinates":[]}""")));
+
+        // Act
+        var updates = await source.ProduceAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(UpdateSituationObject.TypeOneofCase.TextDocument, Assert.Single(updates).TypeCase);
+    }
+
+    [Fact]
+    public async Task ProduceAsync_MissingSent_FallsBackToNow()
+    {
+        // Arrange
+        var before = DateTimeOffset.UtcNow;
+        var source = CreateSource(FeaturesResponse(Feature(id: "a10", eventName: "No Sent Timestamp", sent: null)));
+
+        // Act
+        var updates = await source.ProduceAsync(CancellationToken.None);
+        var after = DateTimeOffset.UtcNow;
+
+        // Assert
+        var reportingTime = Assert.Single(updates).TextDocument.ReportingTime.ToDateTimeOffset();
+        Assert.InRange(reportingTime, before.AddSeconds(-1), after.AddSeconds(1));
+    }
+
+    [Fact]
+    public async Task ProduceAsync_MissingExpires_FallsBackToNowPlusTrackTimeToLive()
+    {
+        // Arrange
+        var options = new NwsOptions { TrackTimeToLive = TimeSpan.FromMinutes(20) };
+        var before = DateTimeOffset.UtcNow;
+        var source = CreateSource(
+            FeaturesResponse(Feature(id: "a11", eventName: "No Expiry Timestamp", expires: null)), options);
+
+        // Act
+        var updates = await source.ProduceAsync(CancellationToken.None);
+        var after = DateTimeOffset.UtcNow;
+
+        // Assert
+        var expiryTime = Assert.Single(updates).TextDocument.ExpiryTime.Content.ToDateTimeOffset();
+        Assert.InRange(expiryTime,
+            before.Add(options.TrackTimeToLive).AddSeconds(-1), after.Add(options.TrackTimeToLive).AddSeconds(1));
     }
 
     [Theory]
@@ -132,19 +216,26 @@ public sealed class NwsAlertSourceTests
         Assert.Empty(updates);
     }
 
-    private static NwsAlertSource CreateSource(string responseJson, NwsOptions? options = null)
+    private static NwsAlertSource CreateSource(string responseJson, NwsOptions? options = null,
+        Action<Uri>? onRequest = null)
     {
-        var factory = new StubHttpClientFactory(new StubHandler(responseJson));
+        var factory = new StubHttpClientFactory(new StubHandler(responseJson, onRequest));
         return new NwsAlertSource(factory, TestHelpers.Options(options ?? new NwsOptions()), TimeProvider.System,
             NullLogger<NwsAlertSource>.Instance);
     }
 
     private static string Feature(
-        string? id, string? eventName, string? severity = "Severe", string? polygon = null)
+        string? id, string? eventName, string? severity = "Severe", string? polygon = null,
+        string? rawGeometry = null,
+        string? sent = "2026-07-12T02:14:00-07:00", string? expires = "2026-07-12T15:00:00-07:00")
     {
-        var geometry = polygon is null ? "null" : $$"""{"type":"Polygon","coordinates":[[{{polygon}}]]}""";
+        var geometry = rawGeometry ?? (polygon is null
+            ? "null"
+            : $$"""{"type":"Polygon","coordinates":[[{{polygon}}]]}""");
         var idJson = id is null ? "null" : $"\"{id}\"";
         var eventJson = eventName is null ? "null" : $"\"{eventName}\"";
+        var sentJson = sent is null ? "null" : $"\"{sent}\"";
+        var expiresJson = expires is null ? "null" : $"\"{expires}\"";
 
         return $$"""
                  {
@@ -157,8 +248,8 @@ public sealed class NwsAlertSourceTests
                      "headline": "headline",
                      "description": "description",
                      "areaDesc": "area",
-                     "sent": "2026-07-12T02:14:00-07:00",
-                     "expires": "2026-07-12T15:00:00-07:00"
+                     "sent": {{sentJson}},
+                     "expires": {{expiresJson}}
                    }
                  }
                  """;
@@ -169,11 +260,12 @@ public sealed class NwsAlertSourceTests
         return $$"""{"type":"FeatureCollection","features":[{{string.Join(",", features)}}]}""";
     }
 
-    private sealed class StubHandler(string responseBody) : HttpMessageHandler
+    private sealed class StubHandler(string responseBody, Action<Uri>? onRequest = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            onRequest?.Invoke(request.RequestUri!);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(responseBody, System.Text.Encoding.UTF8, "application/json")

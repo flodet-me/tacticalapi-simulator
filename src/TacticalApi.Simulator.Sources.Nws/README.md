@@ -8,7 +8,7 @@ Registered via `AddNwsSources` (`NwsServiceCollectionExtensions.cs`). Config sec
 
 ### How it works
 
-1. Every `PollInterval`, `GET {BaseAddress}alerts/active?area={Area}` — `Area` is a two-letter US state/territory code (the NWS API filters by state/zone, not a bounding box).
+1. Every `PollInterval`, `GET {BaseAddress}alerts/active?area={Area}&status=actual` — `Area` is a two-letter US state/territory code (the NWS API filters by state/zone, not a bounding box). `status=actual` excludes NWS test/exercise broadcasts, which otherwise appear in the same feed as real alerts.
 2. Each GeoJSON feature in the response is one active alert: `properties.event` (e.g. "Flood Warning"), `severity` (Extreme/Severe/Moderate/Minor/Unknown), `headline`, `description`, `sent`/`expires` timestamps, and an optional `geometry` (a `Polygon` — many alerts, e.g. area-wide statements, have none).
 3. **Every** alert becomes a `TextDocument` (`MessageCategory = Warning`; `MessagePrecedence` mapped from CAP `severity`: Extreme→Flash, Severe→Immediate, Moderate→Priority, Minor/Unknown→Routine) — this is the only object type guaranteed per alert.
 4. **When the alert has a polygon**, two more objects are added: a `Symbol` marker at the ring's centroid (via `TrackUpdateFactory.CreateSymbolUpdate`, expiring at the alert's own `expires` time rather than a rolling TTL) and a `SketchDocument` outlining the warning area as a closed `Line`.

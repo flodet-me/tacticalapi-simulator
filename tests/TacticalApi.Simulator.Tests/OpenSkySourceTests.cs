@@ -146,7 +146,7 @@ public sealed class OpenSkySourceTests
 
         // Assert
         Assert.NotNull(requestedUri);
-        Assert.Contains("lamin=1", requestedUri!.Query);
+        Assert.Contains("lamin=1", requestedUri.Query);
         Assert.Contains("lomin=3", requestedUri.Query);
         Assert.Contains("lamax=2", requestedUri.Query);
         Assert.Contains("lomax=4", requestedUri.Query);
