@@ -9,5 +9,8 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <InvariantGlobalization>true</InvariantGlobalization>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <!-- Base semantic version. CI appends a VersionSuffix (run number + commit
+         sha) so every pipeline run produces a unique, traceable version. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
   </PropertyGroup>
 </Project>

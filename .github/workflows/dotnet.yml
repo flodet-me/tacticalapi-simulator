@@ -45,8 +45,18 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      - name: Compute build version
+        id: version
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          version_suffix="ci.${{ github.run_number }}+${short_sha}"
+          artifact_suffix="${{ github.run_number }}-${short_sha}"
+          echo "version_suffix=${version_suffix}" >> "$GITHUB_OUTPUT"
+          echo "artifact_suffix=${artifact_suffix}" >> "$GITHUB_OUTPUT"
+          echo "Version: 0.1.0-${version_suffix}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore -p:VersionSuffix=${{ steps.version.outputs.version_suffix }}
 
       - name: Test (unit + E2E, with coverage)
         run: >
@@ -57,7 +67,7 @@ jobs:
 
       - name: Merge coverage reports
         run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.10
           reportgenerator \
             -reports:"coverage/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
@@ -78,7 +88,7 @@ jobs:
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
-          name: coverage
+          name: coverage-${{ steps.version.outputs.artifact_suffix }}
           path: coveragereport
           if-no-files-found: ignore
 
@@ -88,7 +98,7 @@ jobs:
       - name: Upload host artifact
         uses: actions/upload-artifact@v7
         with:
-          name: tacticalapi-simulator
+          name: tacticalapi-simulator-${{ steps.version.outputs.artifact_suffix }}
           path: ./publish
 
   # Builds against the LATEST upstream TacticalAPI contract (submodule moved
