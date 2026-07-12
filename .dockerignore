@@ -1,0 +1,9 @@
+**/.git
+**/.idea
+**/.direnv
+**/bin
+**/obj
+**/coverage
+**/coveragereport
+tests
+external/tacticalapi/.git

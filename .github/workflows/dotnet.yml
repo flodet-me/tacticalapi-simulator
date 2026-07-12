@@ -51,9 +51,13 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           version_suffix="ci.${{ github.run_number }}+${short_sha}"
           artifact_suffix="${{ github.run_number }}-${short_sha}"
+          full_version="0.1.0-${version_suffix}"
           echo "version_suffix=${version_suffix}" >> "$GITHUB_OUTPUT"
           echo "artifact_suffix=${artifact_suffix}" >> "$GITHUB_OUTPUT"
-          echo "Version: 0.1.0-${version_suffix}" >> "$GITHUB_STEP_SUMMARY"
+          echo "full_version=${full_version}" >> "$GITHUB_OUTPUT"
+          # Docker tags don't allow "+", unlike semver build metadata.
+          echo "image_tag=0.1.0-${artifact_suffix}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${full_version}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
         run: dotnet build --configuration Release --no-restore -p:VersionSuffix=${{ steps.version.outputs.version_suffix }}
@@ -100,6 +104,13 @@ jobs:
         with:
           name: tacticalapi-simulator-${{ steps.version.outputs.artifact_suffix }}
           path: ./publish
+
+      - name: Build Docker image
+        run: >
+          docker build
+          --build-arg VERSION=${{ steps.version.outputs.full_version }}
+          --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+          .
 
   # Builds against the LATEST upstream TacticalAPI contract (submodule moved
   # to origin/main) without committing anything. Fails when an upstream proto

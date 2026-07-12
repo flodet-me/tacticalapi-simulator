@@ -143,4 +143,4 @@ dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 
 ## CI
 
-`.github/workflows/ci.yml`: restore → build (Release, warnings as errors) → test with coverage → publish the host as a downloadable artifact. NuGet packages are cached.
+`.github/workflows/dotnet.yml`: restore → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → publish the host as a downloadable artifact → build (but not push) a Docker image tagged with that same version, using the `Dockerfile` at the repo root. NuGet packages are cached.
