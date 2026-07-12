@@ -1,6 +1,6 @@
 # TacticalAPI Simulator
 
-A .NET 10 / C# simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface (`rheinmetall.tactical_api.v0.Situation`).
+A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface (`rheinmetall.tactical_api.v0.Situation`).
 
 It implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process.
 Simulated data sources (a synthetic air picture and a live [OpenSky Network](https://opensky-network.org/) flight tracker) feed tracks into the situation using the unmodified TacticalAPI data model.
@@ -18,12 +18,15 @@ Simulated data sources (a synthetic air picture and a live [OpenSky Network](htt
 ```
 protos/                          .proto contract, copied verbatim from Rheinmetall/tacticalapi
 src/
-  TacticalApi.Simulator.Contracts   protoc/Grpc.Tools code generation (model + service stubs)
-  TacticalApi.Simulator.Core        store, merge logic, event broker, source abstraction, options
-  TacticalApi.Simulator.Sources     bundled sources: SyntheticAirTracks, OpenSky
-  TacticalApi.Simulator.Host        ASP.NET Core gRPC host
+  TacticalApi.Simulator.Contracts     protoc/Grpc.Tools code generation (model + service stubs)
+  TacticalApi.Simulator.Core          store, merge logic, event broker, source abstraction, options
+  TacticalApi.Simulator.Sources       shared track mapping: TrackReport, TrackUpdateFactory, TrackEmitterOptions
+  TacticalApi.Simulator.Sources.OpenSky    live OpenSky Network flight tracker — see its README
+  TacticalApi.Simulator.Sources.Synthetic  offline air-track + scenario sources — see its README
+  TacticalApi.Simulator.Host           ASP.NET Core gRPC host
 tests/
-  TacticalApi.Simulator.Tests       xUnit tests for store, broker, mapping, sources
+  TacticalApi.Simulator.Tests         xUnit tests for store, broker, mapping, sources
+  TacticalApi.Simulator.E2ETests      real host + real gRPC over an in-memory transport
 ```
 
 Dependency direction: `Host → Sources.* → Core → Contracts`. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers).
@@ -45,7 +48,7 @@ grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.Situation/GetSitua
 grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.Situation/SubscribeSituationObjectEvents
 ```
 
-With default settings the synthetic air source immediately populates 12 moving tracks around Bremen; the subscribe stream shows them updating every 2 seconds.
+With default settings the synthetic scenario source (see [`Sources.Synthetic`'s README](src/TacticalApi.Simulator.Sources.Synthetic/README.md)) immediately populates the situation; the subscribe stream shows it updating every 5 seconds.
 
 ## Interface semantics implemented
 
@@ -73,19 +76,23 @@ Everything lives under `Simulator` in `appsettings.json` and reloads at runtime:
     "MaxSituationObjects": 100000          // memory guard (no DB!)
   },
   "Sources": {
-    "SyntheticAirTracks": { "Enabled": true, "TrackCount": 12, "UpdateInterval": "00:00:02", ... },
-    "OpenSky":            { "Enabled": false, "PollInterval": "00:00:15", ... }
+    "SyntheticScenario":  { /* enabled by default — see Sources.Synthetic's README */ },
+    "SyntheticAirTracks": { /* see Sources.Synthetic's README */ },
+    "OpenSky":            { /* disabled by default — see Sources.OpenSky's README */ }
   }
 }
 ```
 
 Performance-relevant behavior is configuration, not code: channel sizes, overflow strategy (`DropOldest` keeps streams fresh for state-based tracks; `Wait` applies backpressure to producers), batch sizes and object caps. The host additionally runs with Server GC.
 
-## Live data: OpenSky flight tracker
+Each source's own settings (intervals, symbol codes, bounding boxes, ...) are documented in its own project, not duplicated here:
 
-Set `Simulator:Sources:OpenSky:Enabled` to `true` and every aircraft inside the configured bounding box becomes a TacticalAPI `Symbol` with a `Point` location (position, altitude, course, speed), callsign as name, a configurable 2525C symbol code, and a TTL-based `expiry_time` so aircraft that leave the box expire automatically. Anonymous OpenSky access is rate limited — keep the poll interval at 10 s or more.
+- [`Sources.OpenSky/README.md`](src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
+- [`Sources.Synthetic/README.md`](src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario
 
 ## Adding your own data source (e.g. an AIS ship tracker)
+
+`Sources.OpenSky` is a working example of exactly this pattern (a live, HTTP-polling source) — read its README alongside this section.
 
 1. Implement `ISimulationSource` — fetch your data and map it to `UpdateSituationObject`. For track-like data, `TrackReport` + `TrackUpdateFactory.CreateSymbolUpdate(...)` does the TacticalAPI mapping for you:
 
@@ -132,8 +139,8 @@ The store discovers mergers by their `HandledCase`; no other change needed.
 
 Two test layers, both run by `dotnet test`:
 
-- **Unit tests** (`TacticalApi.Simulator.Tests`) cover the store semantics (merge, last-write-wins, delete, expiry, object cap), every merger (via `AllMergers` a meta-test asserts full oneof coverage), the event broker, the track mapping, and the OpenSky state-vector parsing against a canned HTTP response (stub `IHttpClientFactory`, no network).
-- **E2E tests** (`TacticalApi.Simulator.E2ETests`) boot the *real* host via `WebApplicationFactory<Program>` and exercise it through *real* gRPC calls on an in-memory transport: add/get round-trip, partial merge over the wire, delete, error headers, snapshot-then-live-events on the subscribe stream, stale-update rejection, the gRPC-Web transport (same path as the official Rheinmetall test client), the scenario source populating all 11 object types end-to-end, the expiry sweeper, and the HTTP status endpoint. Background sources are disabled by default in the fixture so tests stay deterministic; individual tests opt back in via configuration overrides.
+- **Unit tests** (`TacticalApi.Simulator.Tests`) cover the store semantics (merge, last-write-wins, delete, expiry, object cap), every merger (via `AllMergers` a meta-test asserts full oneof coverage), the event broker, and the track mapping. Source-specific unit test coverage is documented in each source project's own README.
+- **E2E tests** (`TacticalApi.Simulator.E2ETests`) boot the *real* host via `WebApplicationFactory<Program>` and exercise it through *real* gRPC calls on an in-memory transport: add/get round-trip, partial merge over the wire, delete, error headers, snapshot-then-live-events on the subscribe stream, stale-update rejection, the gRPC-Web transport (same path as the official Rheinmetall test client), the expiry sweeper, and the HTTP status endpoint — plus the scenario source end-to-end (see `Sources.Synthetic`'s README). Background sources are disabled by default in the fixture so tests stay deterministic; individual tests opt back in via configuration overrides.
 
 Run locally with the same coverage gate as CI:
 
@@ -141,11 +148,3 @@ Run locally with the same coverage gate as CI:
 dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 ```
 
-## CI
-
-`.github/workflows/dotnet.yml` runs two jobs in parallel:
-
-- `format-check`: `dotnet format --verify-no-changes` — fails fast on style/formatting drift without waiting on the full build.
-- `build-and-test`: restore → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → publish the host as a downloadable artifact → build (but not push) a Docker image tagged with that same version, using the `Dockerfile` at the repo root.
-
-The .NET SDK install + NuGet cache steps are factored into a shared composite action (`.github/actions/setup-build-env`) so the SDK version and cache key are defined once, not per job.
