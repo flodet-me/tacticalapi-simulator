@@ -16,7 +16,6 @@ Simulated data sources (a synthetic air picture and a live [OpenSky Network](htt
 ## Solution layout
 
 ```
-protos/                          .proto contract, copied verbatim from Rheinmetall/tacticalapi
 src/
   TacticalApi.Simulator.Contracts     protoc/Grpc.Tools code generation (model + service stubs)
   TacticalApi.Simulator.Core          store, merge logic, event broker, source abstraction, options

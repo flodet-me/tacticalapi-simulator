@@ -5,6 +5,12 @@ using Xunit;
 
 namespace TacticalApi.Simulator.Tests;
 
+/// <summary>
+///     Unit tests for the per-object-type mergers in
+///     src/TacticalApi.Simulator.Core/Merging/: <see cref="RouteMerger" />,
+///     <see cref="OrganizationUnitMerger" />, <see cref="ActionEventMerger" />,
+///     and <see cref="SymbolMerger" />.
+/// </summary>
 public sealed class TypedMergerTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 7, 11, 12, 0, 0, TimeSpan.Zero);
@@ -17,6 +23,7 @@ public sealed class TypedMergerTests
     [Fact]
     public void RouteMerger_CreatesAndPartiallyUpdates()
     {
+        // Arrange
         var (reporter, time) = Meta();
         var merger = new RouteMerger();
         var create = new UpdateSituationObject
@@ -31,10 +38,9 @@ public sealed class TypedMergerTests
                 RouteType = new UpdatePropertyRouteType { Content = RouteType.MainSupplyRoute }
             }
         };
-
         var created = merger.Merge(null, create);
 
-        // Partial update: change width only, name must survive.
+        // Act: partial update - change width only, name must survive.
         var update = new UpdateSituationObject
         {
             Route = new UpdateRoute
@@ -47,6 +53,7 @@ public sealed class TypedMergerTests
         };
         var merged = merger.Merge(created, update);
 
+        // Assert
         Assert.Equal("Route X", merged.Route.Name.Content);
         Assert.Equal(5, merged.Route.LineWidth.Content);
         Assert.Equal(RouteType.MainSupplyRoute, merged.Route.RouteType.Content);
@@ -57,11 +64,13 @@ public sealed class TypedMergerTests
     [Fact]
     public void OrganizationUnitMerger_KeepsSubordinateReferences()
     {
+        // Arrange
         var (reporter, time) = Meta();
         var merger = new OrganizationUnitMerger();
         var refs = new UpdatePropertyReferences();
         refs.Contents.Add(new Identity { StringIdentity = "sub1" });
 
+        // Act
         var created = merger.Merge(null, new UpdateSituationObject
         {
             OrganizationUnit = new UpdateOrganizationUnit
@@ -75,6 +84,7 @@ public sealed class TypedMergerTests
             }
         });
 
+        // Assert
         var identity = Assert.Single(created.OrganizationUnit.SubordinatedOrganizationUnitCollection.Contents);
         Assert.Equal("sub1", identity.StringIdentity);
         Assert.Equal(UnitDesignation.Platoon, created.OrganizationUnit.UnitDesignation.Content);
@@ -83,9 +93,11 @@ public sealed class TypedMergerTests
     [Fact]
     public void ActionEventMerger_MapsThreatAndType()
     {
+        // Arrange
         var (reporter, time) = Meta();
         var merger = new ActionEventMerger();
 
+        // Act
         var created = merger.Merge(null, new UpdateSituationObject
         {
             ActionEvent = new UpdateActionEvent
@@ -98,7 +110,38 @@ public sealed class TypedMergerTests
             }
         });
 
+        // Assert
         Assert.Equal(ActionEventType.SniperAttack, created.ActionEvent.ActionEventType.Content);
         Assert.Equal(4, created.ActionEvent.ThreatLevel.Content);
+    }
+
+    [Fact]
+    public void SymbolMerger_MergesForeignKeyByReportingSource()
+    {
+        // Arrange: the update model carries one foreign key (identity + source);
+        // the stored model keeps a dictionary keyed by that source (PropertyMerge.ForeignKey).
+        var (reporter, time) = Meta();
+        var merger = new SymbolMerger();
+        var create = new UpdateSituationObject
+        {
+            Symbol = new UpdateSymbol
+            {
+                Identity = new Identity { StringIdentity = "s1" },
+                Reporter = reporter,
+                ReportingTime = time,
+                ForeignKey = new UpdatePropertyIdentity
+                {
+                    Source = "AIS",
+                    Content = new Identity { StringIdentity = "mmsi:123456" }
+                }
+            }
+        };
+
+        // Act
+        var created = merger.Merge(null, create);
+
+        // Assert
+        var foreignKey = Assert.Contains("AIS", (IDictionary<string, DataPropertyIdentity>)created.Symbol.ForeignKeys);
+        Assert.Equal("mmsi:123456", foreignKey.Content.StringIdentity);
     }
 }
