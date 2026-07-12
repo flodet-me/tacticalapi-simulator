@@ -17,6 +17,7 @@ src/
   TacticalApi.Simulator.Sources       shared track mapping: TrackReport, TrackUpdateFactory, TrackEmitterOptions
   TacticalApi.Simulator.Sources.OpenSky    live OpenSky Network flight tracker — see its README
   TacticalApi.Simulator.Sources.Synthetic  offline air-track + scenario sources — see its README
+  TacticalApi.Simulator.Sources.Nws        live NWS weather alerts (text + symbol + sketch) — see its README
   TacticalApi.Simulator.Host           ASP.NET Core gRPC host
 tests/
   TacticalApi.Simulator.Tests         xUnit tests for store, broker, mapping, sources
@@ -29,6 +30,7 @@ Per-source implementation detail lives with the source, not here:
 
 - [`Sources.OpenSky/README.md`](../src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
 - [`Sources.Synthetic/README.md`](../src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario
+- [`Sources.Nws/README.md`](../src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts
 
 ## Interface semantics implemented
 

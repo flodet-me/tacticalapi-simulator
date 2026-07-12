@@ -3,7 +3,7 @@
 A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface (`rheinmetall.tactical_api.v0.Situation`).
 
 It implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process.
-Simulated data sources (a synthetic air picture and a live [OpenSky Network](https://opensky-network.org/) flight tracker) feed tracks into the situation using the unmodified TacticalAPI data model.
+Simulated data sources (a synthetic air picture, a live [OpenSky Network](https://opensky-network.org/) flight tracker, and live [US National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts) feed the situation using the unmodified TacticalAPI data model.
 
 ## Running
 
@@ -36,3 +36,4 @@ Per-source configuration and behavior:
 
 - [`Sources.OpenSky`](src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
 - [`Sources.Synthetic`](src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario
+- [`Sources.Nws`](src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts (text + location + warning-area sketch from one feed)

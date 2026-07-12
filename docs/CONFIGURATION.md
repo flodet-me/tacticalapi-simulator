@@ -16,7 +16,8 @@ Everything lives under `Simulator` in `appsettings.json` and reloads at runtime 
   "Sources": {
     "SyntheticScenario":  { /* enabled by default — see Sources.Synthetic's README */ },
     "SyntheticAirTracks": { /* see Sources.Synthetic's README */ },
-    "OpenSky":            { /* disabled by default — see Sources.OpenSky's README */ }
+    "OpenSky":            { /* disabled by default — see Sources.OpenSky's README */ },
+    "Nws":                { /* disabled by default — see Sources.Nws's README */ }
   }
 }
 ```
@@ -27,3 +28,4 @@ Each source's own settings (intervals, symbol codes, bounding boxes, ...) are do
 
 - [`Sources.OpenSky/README.md`](../src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
 - [`Sources.Synthetic/README.md`](../src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario
+- [`Sources.Nws/README.md`](../src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts

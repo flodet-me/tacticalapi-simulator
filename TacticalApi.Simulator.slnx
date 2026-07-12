@@ -3,6 +3,7 @@
         <Project Path="src/TacticalApi.Simulator.Contracts/TacticalApi.Simulator.Contracts.csproj" />
         <Project Path="src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj" />
         <Project Path="src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj" />
+        <Project Path="src/TacticalApi.Simulator.Sources.Nws/TacticalApi.Simulator.Sources.Nws.csproj" />
         <Project Path="src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj" />
         <Project Path="src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj" />
         <Project Path="src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj" />

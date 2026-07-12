@@ -4,6 +4,7 @@ using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
+using TacticalApi.Simulator.Sources.Nws;
 using TacticalApi.Simulator.Sources.OpenSky;
 using TacticalApi.Simulator.Sources.Synthetic;
 
@@ -27,6 +28,7 @@ builder.Services.AddGrpc(options =>
 builder.Services.AddGrpcReflection();
 
 builder.Services.AddSimulatorCore();
+builder.Services.AddNwsSources(builder.Configuration);
 builder.Services.AddOpenSkySources(builder.Configuration);
 builder.Services.AddSyntheticSources(builder.Configuration);
 

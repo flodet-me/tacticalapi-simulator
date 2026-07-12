@@ -3,6 +3,7 @@ using Grpc.Net.Client.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Sources.Nws;
 using TacticalApi.Simulator.Sources.OpenSky;
 using TacticalApi.Simulator.Sources.Synthetic;
 
@@ -35,6 +36,7 @@ public class SimulatorFactory : WebApplicationFactory<Program>
         builder.UseSetting($"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}", "false");
         builder.UseSetting($"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}", "false");
         builder.UseSetting($"{OpenSkyOptions.SectionName}:{nameof(OpenSkyOptions.Enabled)}", "false");
+        builder.UseSetting($"{NwsOptions.SectionName}:{nameof(NwsOptions.Enabled)}", "false");
 
         foreach (var (key, value) in _settings)
         {

@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.Nws\TacticalApi.Simulator.Sources.Nws.csproj"/>
     <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.OpenSky\TacticalApi.Simulator.Sources.OpenSky.csproj"/>
     <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.Synthetic\TacticalApi.Simulator.Sources.Synthetic.csproj"/>
     <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj"/>
