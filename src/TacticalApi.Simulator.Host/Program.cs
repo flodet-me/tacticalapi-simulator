@@ -18,6 +18,11 @@ builder.Services.AddOptions<SimulatorOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<MapUiOptions>()
+    .Bind(builder.Configuration.GetSection(MapUiOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 builder.Services.AddGrpc(options =>
 {
     // No security features by request: no auth interceptors, no TLS below.
@@ -53,9 +58,30 @@ app.MapGet("/", (SituationStore store,
     }));
 
 // Read-only map GUI: static files under wwwroot/ui, backed by a JSON snapshot endpoint.
-app.UseStaticFiles();
-app.MapGet("/ui", () => Results.Redirect("/ui/index.html"));
-app.MapGet("/api/objects", (SituationStore store) => Results.Ok(SituationObjectMapper.Map(store.GetSnapshot())));
+// Gated on MapUiOptions.Enabled per-request (not just at startup) so toggling it in
+// appsettings.json hides the GUI without a restart, like every other option here.
+app.UseWhen(
+    ctx => ctx.RequestServices.GetRequiredService<IOptionsMonitor<MapUiOptions>>().CurrentValue.Enabled,
+    branch => branch.UseStaticFiles());
+
+app.MapGet("/ui", (IOptionsMonitor<MapUiOptions> options) =>
+    options.CurrentValue.Enabled ? Results.Redirect("/ui/index.html") : Results.NotFound());
+app.MapGet("/api/objects", (SituationStore store, IOptionsMonitor<MapUiOptions> options) =>
+    options.CurrentValue.Enabled
+        ? Results.Ok(SituationObjectMapper.Map(store.GetSnapshot()))
+        : Results.NotFound());
+app.MapGet("/api/config", (IOptionsMonitor<MapUiOptions> options) =>
+{
+    var o = options.CurrentValue;
+    if (!o.Enabled) return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        refreshMs = o.RefreshInterval.TotalMilliseconds,
+        defaultCenter = new { lat = o.DefaultCenterLatitude, lon = o.DefaultCenterLongitude },
+        defaultZoom = o.DefaultZoom
+    });
+});
 
 app.Run();
 

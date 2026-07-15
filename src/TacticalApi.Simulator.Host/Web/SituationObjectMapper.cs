@@ -173,14 +173,54 @@ public static class SituationObjectMapper
 
     private static MapObject? Create(
         string type, Identity? identity, DataPropertyString? name, DataPropertyString? additionalInformation,
-        DataPropertyLocation? location, IReadOnlyDictionary<string, string> details,
+        DataPropertyLocation? location, Dictionary<string, string> details,
         MapSymbolIdentifier? symbolIdentifier)
     {
         var id = IdentityKey.TryCreate(identity);
         if (id is null) return null;
 
+        var mapLocation = ExtractLocation(location?.Content);
+        AddLocationDetails(details, mapLocation);
+
         return new MapObject(id, type, name?.Content, additionalInformation?.Content,
-            ExtractLocation(location?.Content), details, symbolIdentifier);
+            mapLocation, details, symbolIdentifier);
+    }
+
+    /// <summary>
+    ///     Surfaces the location geometry itself as plain-text details - position, and whichever
+    ///     shape-specific measurements apply (course/speed, corridor width, fan/ellipse
+    ///     range/sector/axes) - so it's visible in the sidebar/popup, not just drawn on the map.
+    /// </summary>
+    private static void AddLocationDetails(Dictionary<string, string> details, MapLocation? location)
+    {
+        if (location is null) return;
+
+        AddDetail(details, "Position", PositionText(location));
+        if (location.Course is double course) AddDetail(details, "Course", $"{course:F0}°");
+        if (location.Speed is double speed) AddDetail(details, "Speed", $"{speed:F1} m/s");
+        if (location.WidthM is double width) AddDetail(details, "Corridor width", $"{width:F0} m");
+        if (location.MinRangeM is double minRange) AddDetail(details, "Min range", $"{minRange:F0} m");
+        if (location.MaxRangeM is double maxRange) AddDetail(details, "Max range", $"{maxRange:F0} m");
+        if (location.SemiMajorM is double semiMajor) AddDetail(details, "Semi-major axis", $"{semiMajor:F0} m");
+        if (location.SemiMinorM is double semiMinor) AddDetail(details, "Semi-minor axis", $"{semiMinor:F0} m");
+        if (location.SectorDeg is double sector) AddDetail(details, "Sector", $"{sector:F0}°");
+        if (location.OrientationDeg is double orientation) AddDetail(details, "Orientation", $"{orientation:F0}°");
+    }
+
+    private static string? PositionText(MapLocation location)
+    {
+        if (location.Points.Count == 0)
+            return location.Elements is { Count: > 0 } elements ? $"{elements.Count} sketch element(s)" : null;
+
+        if (location.Points.Count == 1) return PointText(location.Points[0]);
+
+        return string.Join('\n', location.Points.Select((p, i) =>
+            p.Name is not null ? $"{p.Name}: {PointText(p)}" : $"{i + 1}: {PointText(p)}"));
+    }
+
+    private static string PointText(MapPoint point)
+    {
+        return $"{point.Lat:F5}°, {point.Lon:F5}°";
     }
 
     private static Dictionary<string, string> BuildDetails(
@@ -283,26 +323,51 @@ public static class SituationObjectMapper
         {
             SymbolLocation.LocationOneofCase.Point => new MapLocation("point",
                 [ToPoint(location.Point.GeoPoint)], location.Point.Course, location.Point.Speed),
-            SymbolLocation.LocationOneofCase.Ellipse => new MapLocation("ellipse",
-                [ToPoint(location.Ellipse.CenterPoint)], null, null),
-            SymbolLocation.LocationOneofCase.Fan => new MapLocation("fan",
-                [ToPoint(location.Fan.VertexPoint)], null, null),
+            SymbolLocation.LocationOneofCase.Ellipse => ExtractEllipse(location.Ellipse),
+            SymbolLocation.LocationOneofCase.Fan => new MapLocation("fan", [ToPoint(location.Fan.VertexPoint)],
+                OrientationDeg: location.Fan.OrientationAngle, SectorDeg: location.Fan.SectorSizeAngle,
+                MinRangeM: location.Fan.MinimumRangeDimension, MaxRangeM: location.Fan.MaximumRangeDimension),
             SymbolLocation.LocationOneofCase.Multipoint => new MapLocation("multipoint",
-                location.Multipoint.Points.Select(ToPoint).ToList(), null, null),
+                location.Multipoint.Points.Select(ToPoint).ToList()),
             SymbolLocation.LocationOneofCase.Corridor => new MapLocation("corridor",
-                location.Corridor.Points.Select(ToPoint).ToList(), null, null),
+                location.Corridor.Points.Select(ToPoint).ToList(), WidthM: location.Corridor.Width),
             SymbolLocation.LocationOneofCase.Line => new MapLocation("line",
-                location.Line.Points.Select(ToPoint).ToList(), null, null),
+                location.Line.Points.Select(ToPoint).ToList()),
             SymbolLocation.LocationOneofCase.Polygon => new MapLocation("polygon",
-                location.Polygon.Points.Select(ToPoint).ToList(), null, null),
+                location.Polygon.Points.Select(ToPoint).ToList()),
             SymbolLocation.LocationOneofCase.RouteLocation => new MapLocation("route",
-                location.RouteLocation.WayPoints.Select(ToPoint).ToList(), null, null),
-            SymbolLocation.LocationOneofCase.SketchLocation => new MapLocation("sketch",
-                location.SketchLocation.Elements
-                    .SelectMany(element => ExtractLocation(element.Location)?.Points ?? [])
-                    .ToList(), null, null),
+                location.RouteLocation.WayPoints.Select(ToPoint).ToList()),
+            SymbolLocation.LocationOneofCase.SketchLocation => new MapLocation("sketch", [],
+                Elements: MapSketchElements(location.SketchLocation)),
             _ => null
         };
+    }
+
+    private static MapLocation ExtractEllipse(Ellipse ellipse)
+    {
+        var center = ellipse.CenterPoint;
+        var semiMajor = DistanceMeters(center, ellipse.FirstConjugateDiameterPoint);
+        var semiMinor = DistanceMeters(center, ellipse.SecondConjugateDiameterPoint);
+        var orientation = BearingDeg(center, ellipse.FirstConjugateDiameterPoint);
+
+        return new MapLocation("ellipse", [ToPoint(center)],
+            OrientationDeg: orientation, SemiMajorM: semiMajor, SemiMinorM: semiMinor);
+    }
+
+    private static IReadOnlyList<MapSketchElement> MapSketchElements(SketchLocation sketch)
+    {
+        var result = new List<MapSketchElement>(sketch.Elements.Count);
+        foreach (var element in sketch.Elements)
+        {
+            var loc = ExtractLocation(element.Location);
+            if (loc is null || loc.Points.Count == 0) continue;
+
+            result.Add(new MapSketchElement(loc.Kind, loc.Points,
+                ColorText(element.LineColor), EnumText<LineStyle>(element.LineStyle),
+                EnumText<FillStyle>(element.FillStyle)));
+        }
+
+        return result;
     }
 
     private static MapPoint ToPoint(GeoPoint point)
@@ -312,6 +377,33 @@ public static class SituationObjectMapper
 
     private static MapPoint ToPoint(WayPoint point)
     {
-        return new MapPoint(point.LatitudeCoordinate, point.LongitudeCoordinate);
+        return new MapPoint(point.LatitudeCoordinate, point.LongitudeCoordinate,
+            point.WayPointName, point.Comment,
+            point.ArrivalTime?.ToDateTimeOffset().ToString("O"), point.SegmentTravelTime?.ToTimeSpan().TotalSeconds);
+    }
+
+    // Haversine distance/initial bearing - only needed to turn an Ellipse's center + two
+    // conjugate diameter points into semi-axis lengths/orientation for the frontend to draw.
+    private const double EarthRadiusM = 6371000.0;
+
+    private static double DistanceMeters(GeoPoint a, GeoPoint b)
+    {
+        var lat1 = a.LatitudeCoordinate * Math.PI / 180.0;
+        var lat2 = b.LatitudeCoordinate * Math.PI / 180.0;
+        var dLat = (b.LatitudeCoordinate - a.LatitudeCoordinate) * Math.PI / 180.0;
+        var dLon = (b.LongitudeCoordinate - a.LongitudeCoordinate) * Math.PI / 180.0;
+        var h = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1) * Math.Cos(lat2) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return 2 * EarthRadiusM * Math.Asin(Math.Sqrt(h));
+    }
+
+    private static double BearingDeg(GeoPoint from, GeoPoint to)
+    {
+        var lat1 = from.LatitudeCoordinate * Math.PI / 180.0;
+        var lat2 = to.LatitudeCoordinate * Math.PI / 180.0;
+        var dLon = (to.LongitudeCoordinate - from.LongitudeCoordinate) * Math.PI / 180.0;
+        var y = Math.Sin(dLon) * Math.Cos(lat2);
+        var x = Math.Cos(lat1) * Math.Sin(lat2) - Math.Sin(lat1) * Math.Cos(lat2) * Math.Cos(dLon);
+        return (Math.Atan2(y, x) * 180.0 / Math.PI + 360.0) % 360.0;
     }
 }

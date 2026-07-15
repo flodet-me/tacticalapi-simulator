@@ -44,25 +44,27 @@ this is what populates the simulator out of the box.
 
 ### How it works
 
-Emits a coherent mini scenario every `UpdateInterval`, covering all 11 `oneof` object types of the TacticalAPI v0
-contract in one pass:
+Emits a coherent mini scenario every `UpdateInterval`, covering all 11 `oneof` object types - and most of the
+contract's location kinds - of the TacticalAPI v0 contract in one pass:
 
-| Object type            | What it represents                                                                                                                                               |
-|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `OrganizationUnit` ×3  | A company HQ ("A Coy") with two subordinated platoons (ORBAT via `SubordinatedOrganizationUnitCollection`)                                                       |
-| `Route`                | A rectangular patrol route ("Route BRAVO") — a `Line` location with 4 corners laid out `ExtentKm` around the center                                              |
-| `Symbol`               | A patrol vehicle interpolated along the route perimeter; lap progress driven by `PatrolLapDuration`                                                              |
-| `ActionTask`           | The patrol order, `ActionTaskStatus` transitioning `NotStarted → InProgress → Complete` with a live `CompletionRatio` tied to lap progress                       |
-| `ActionEvent`          | Random incidents (sniper attack, artillery, booby trap, ...) near the route; emitted with probability `EventProbability` per cycle, expire via `EventTimeToLive` |
-| `TextDocument`         | Periodic SITREP chat lines; emitted with probability `ChatProbability` per cycle                                                                                 |
-| `NatoMessageDocument`  | A static OWNSITREP MTF-formatted message                                                                                                                         |
-| `PictureDocument`      | A recon photo (tiny embedded 1×1 PNG — just enough to be a valid payload)                                                                                        |
-| `VoiceMessageDocument` | A radio check (tiny embedded WAV)                                                                                                                                |
-| `SketchDocument`       | A planning sketch line between two waypoints                                                                                                                     |
-| `OverlayDocument`      | An overlay carrying two nested phase-line `Symbol` objects                                                                                                       |
+| Object type            | What it represents                                                                                                                                                    |
+|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `OrganizationUnit` ×3  | A company HQ ("A Coy") with two subordinated platoons (ORBAT via `SubordinatedOrganizationUnitCollection`)                                                          |
+| `Route` ×2             | "Route BRAVO", an irregular six-checkpoint patrol loop as a `RouteLocation` (named/commented waypoints with ETAs); "Route CHARLIE", a resupply air corridor as a `Corridor` (500 m wide) |
+| `Symbol`               | A patrol vehicle interpolated along Route BRAVO's perimeter (lap progress driven by `PatrolLapDuration`); "Objective HOTEL", a `Polygon` assembly area with a demo `ForeignKey` |
+| `ActionTask`           | The patrol order, `ActionTaskStatus` transitioning `NotStarted → InProgress → Complete` with a live `CompletionRatio` tied to lap progress                          |
+| `ActionEvent`          | Random incidents near the route, each with a location kind matching its nature: sniper attack (`Fan` detection arc), artillery fire (`Ellipse` impact area), booby-trap belt (`Multipoint` device cluster), or a plain point (traffic accident, acoustic fix); emitted with probability `EventProbability` per cycle, expire via `EventTimeToLive` |
+| `TextDocument`         | Periodic SITREP chat lines; emitted with probability `ChatProbability` per cycle                                                                                    |
+| `NatoMessageDocument`  | A static OWNSITREP MTF-formatted message                                                                                                                            |
+| `PictureDocument`      | A recon photo (tiny embedded 1×1 PNG — just enough to be a valid payload)                                                                                           |
+| `VoiceMessageDocument` | A radio check (tiny embedded WAV)                                                                                                                                   |
+| `SketchDocument`       | A multi-element planning sketch (`SketchLocation`): the objective outline (dashed polygon), the axis of advance (solid line), and a rally point marker - each individually colored/styled |
+| `OverlayDocument`      | An overlay carrying two nested phase-line `Symbol` objects                                                                                                          |
 
 Everything goes through the same `UpdateSituationObject` batch path as every other source — indistinguishable from an
-external TacticalAPI client.
+external TacticalAPI client. The patrol loop, objective area, and forward operating base are laid out once at startup
+from a small deterministic geometry builder (seeded by `Seed`), so the shapes stay stable across cycles even though
+the patrol symbol and incidents move/appear every cycle.
 
 ### Configuration (`SyntheticScenarioOptions`)
 

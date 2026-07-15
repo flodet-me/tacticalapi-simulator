@@ -9,22 +9,26 @@ using TacticalApi.Simulator.Sources.Synthetic.Logging;
 namespace TacticalApi.Simulator.Sources.Synthetic;
 
 /// <summary>
-///     Offline source that exercises ALL 11 situation object types of the
-///     TacticalAPI v0 contract in one coherent mini scenario:
+///     Offline source that exercises ALL 11 situation object types - and most of the TacticalAPI
+///     v0 location kinds - in one coherent mini scenario:
 ///     - OrganizationUnit: a company HQ with two subordinated platoons (ORBAT)
-///     - Route:            a rectangular patrol route (Line location)
-///     - Symbol:           a patrol vehicle moving along that route
-///     - ActionTask:       the patrol order, progressing NOT_STARTED ->
-///     IN_PROGRESS -> COMPLETE with a live completion ratio
-///     - ActionEvent:      random incidents near the route (expire via TTL)
+///     - Route BRAVO:      an irregular patrol loop with six named/commented waypoints (RouteLocation)
+///     - Route CHARLIE:    a resupply air corridor from the rear area to the objective (Corridor)
+///     - Symbol:           a patrol vehicle moving along Route BRAVO, plus an objective area (Polygon)
+///     - ActionTask:       the patrol order, progressing NOT_STARTED -> IN_PROGRESS -> COMPLETE
+///     with a live completion ratio
+///     - ActionEvent:      random incidents near the route - a sensor detection arc (Fan), an
+///     artillery impact area (Ellipse), a discovered device cluster (Multipoint), or a plain
+///     point incident - expiring via TTL
 ///     - TextDocument:     periodic SITREP chat messages
 ///     - NatoMessageDocument: an OWNSITREP MTF message
 ///     - PictureDocument:  recon photo (tiny embedded PNG)
 ///     - VoiceMessageDocument: radio check (tiny embedded WAV)
-///     - SketchDocument:   a planning sketch along the route
+///     - SketchDocument:   a multi-element planning sketch (objective outline + axis of advance +
+///     rally point), each element individually styled
 ///     - OverlayDocument:  an overlay carrying two nested phase-line symbols
-///     Everything is emitted as plain UpdateSituationObject batches through the
-///     standard ingest path - exactly like an external TacticalAPI client.
+///     Everything is emitted as plain UpdateSituationObject batches through the standard ingest
+///     path - exactly like an external TacticalAPI client.
 /// </summary>
 public sealed class SyntheticScenarioSource(
     IOptionsMonitor<SyntheticScenarioOptions> options,
@@ -48,6 +52,10 @@ public sealed class SyntheticScenarioSource(
     private static readonly byte[] TinyWav = CreateTinyWav();
     private readonly DateTimeOffset _epoch = timeProvider.GetUtcNow();
 
+    // Static scenario geography, built once from the seed so the shapes stay stable across
+    // cycles (unlike _random below, which drives per-cycle incident selection).
+    private readonly ScenarioGeometry _geometry = BuildGeometry(options.CurrentValue);
+
     private readonly Random _random = new(options.CurrentValue.Seed);
     private int _chatCounter;
     private int _eventCounter;
@@ -69,7 +77,7 @@ public sealed class SyntheticScenarioSource(
         var now = timeProvider.GetUtcNow();
         var nowTs = Timestamp.FromDateTimeOffset(now);
         var reporter = new Identity { StringIdentity = o.ReporterId };
-        var waypoints = PatrolWaypoints(o);
+        var geo = _geometry;
 
         var updates = new List<UpdateSituationObject>
         {
@@ -82,27 +90,33 @@ public sealed class SyntheticScenarioSource(
             OrganizationUnit(reporter, nowTs, "scenario:unit:plt2", "2nd Platoon", UnitDesignation.Platoon,
                 "A Coy", (0, 120, 220), []),
 
-            // --- Patrol route (Line location) --------------------------------
-            Route(reporter, nowTs, waypoints),
+            // --- Patrol route (RouteLocation - named, commented waypoints) ----
+            PatrolRoute(reporter, nowTs, o, geo),
+
+            // --- Resupply air corridor into the objective (Corridor) ----------
+            SupportCorridor(reporter, nowTs, geo),
 
             // --- Patrol vehicle moving along the route ------------------------
-            PatrolSymbol(o, now, waypoints),
+            PatrolSymbol(o, now, geo),
 
             // --- The patrol order with live progress --------------------------
-            PatrolTask(o, reporter, now, nowTs, waypoints),
+            PatrolTask(o, reporter, now, nowTs, geo),
+
+            // --- Objective area (Polygon) --------------------------------------
+            ObjectiveArea(reporter, nowTs, geo),
 
             // --- Documents ----------------------------------------------------
             NatoMessage(reporter, nowTs, now),
-            ReconPicture(reporter, nowTs, waypoints[1]),
+            ReconPicture(reporter, nowTs, geo.PatrolWaypoints[1]),
             RadioCheck(reporter, nowTs),
-            PlanningSketch(reporter, nowTs, waypoints),
-            PhaseLineOverlay(reporter, nowTs, waypoints)
+            PlanningSketch(reporter, nowTs, geo),
+            PhaseLineOverlay(reporter, nowTs, geo.PatrolWaypoints)
         };
 
         // --- Spontaneous incidents (expire automatically via TTL) -------------
         if (_random.NextDouble() < o.EventProbability)
         {
-            var incident = RandomIncident(o, reporter, now, nowTs, waypoints);
+            var incident = RandomIncident(o, reporter, now, nowTs, geo);
             updates.Add(incident);
             logger.IncidentRaised(
                 incident.ActionEvent.Identity.StringIdentity,
@@ -122,21 +136,92 @@ public sealed class SyntheticScenarioSource(
         return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
     }
 
-    // ---------------------------------------------------------------- helpers
+    // ---------------------------------------------------------------- geometry
 
-    /// <summary>Four corners of a rectangular patrol route around the center.</summary>
-    private static (double Lat, double Lon)[] PatrolWaypoints(SyntheticScenarioOptions o)
+    private sealed record RouteWaypoint(double Lat, double Lon, string Name, string Comment);
+
+    private sealed record ScenarioGeometry(
+        RouteWaypoint[] PatrolWaypoints,
+        (double Lat, double Lon)[] ObjectiveArea,
+        (double Lat, double Lon) ObjectiveCentroid,
+        (double Lat, double Lon) ForwardOperatingBase);
+
+    /// <summary>
+    ///     Lays out the whole scenario's geography once from <see cref="SyntheticScenarioOptions.Seed" />:
+    ///     an irregular six-waypoint patrol loop, a pentagon-ish objective area near one of its
+    ///     legs, and a forward operating base outside the loop for the resupply corridor to
+    ///     originate from. Deterministic per seed so the shapes are stable across cycles.
+    /// </summary>
+    private static ScenarioGeometry BuildGeometry(SyntheticScenarioOptions o)
     {
         var dLat = o.ExtentKm / 2 / EarthRadiusKm * (180.0 / Math.PI);
         var dLon = dLat / Math.Cos(o.CenterLatitude * Math.PI / 180.0);
-        return
+        var jitter = new Random(o.Seed);
+
+        (string Name, string Comment, double DLatFactor, double DLonFactor)[] plan =
         [
-            (o.CenterLatitude - dLat, o.CenterLongitude - dLon),
-            (o.CenterLatitude - dLat, o.CenterLongitude + dLon),
-            (o.CenterLatitude + dLat, o.CenterLongitude + dLon),
-            (o.CenterLatitude + dLat, o.CenterLongitude - dLon)
+            ("SP", "Start point, motor pool", -1.0, -1.0),
+            ("CP1", "Checkpoint at the crossroads", -1.0, 0.3),
+            ("CP2", "Overwatch ridge", -0.2, 1.0),
+            ("CP3", "Village outskirts", 1.0, 1.0),
+            ("CP4", "River crossing", 1.0, -0.4),
+            ("RP", "Release point, rally back to SP", 0.3, -1.0)
         ];
+
+        var waypoints = plan.Select(p =>
+        {
+            var jitterLat = (jitter.NextDouble() - 0.5) * 0.15;
+            var jitterLon = (jitter.NextDouble() - 0.5) * 0.15;
+            return new RouteWaypoint(
+                o.CenterLatitude + (p.DLatFactor + jitterLat) * dLat,
+                o.CenterLongitude + (p.DLonFactor + jitterLon) * dLon,
+                p.Name, p.Comment);
+        }).ToArray();
+
+        // Objective area: an irregular pentagon near the village outskirts checkpoint.
+        var objectiveCenter = waypoints[3];
+        var objectiveRadiusM = o.ExtentKm * 0.12 * 1000;
+        var objectiveArea = new (double Lat, double Lon)[5];
+        for (var i = 0; i < objectiveArea.Length; i++)
+        {
+            var bearing = i * (360.0 / objectiveArea.Length) + jitter.NextDouble() * 20 - 10;
+            var radius = objectiveRadiusM * (0.7 + jitter.NextDouble() * 0.3);
+            objectiveArea[i] = Destination(objectiveCenter.Lat, objectiveCenter.Lon, bearing, radius);
+        }
+
+        var objectiveCentroid = (
+            objectiveArea.Average(p => p.Lat),
+            objectiveArea.Average(p => p.Lon));
+
+        // Forward operating base: outside the loop, southwest of the start point.
+        var fob = Destination(waypoints[0].Lat, waypoints[0].Lon, 225, o.ExtentKm * 0.4 * 1000);
+
+        return new ScenarioGeometry(waypoints, objectiveArea, objectiveCentroid, fob);
     }
+
+    /// <summary>Great-circle destination point, given a start point, bearing and distance.</summary>
+    private static (double Lat, double Lon) Destination(double lat, double lon, double bearingDeg, double distanceM)
+    {
+        var angularDistance = distanceM / (EarthRadiusKm * 1000.0);
+        var bearing = bearingDeg * Math.PI / 180.0;
+        var lat1 = lat * Math.PI / 180.0;
+        var lon1 = lon * Math.PI / 180.0;
+
+        var lat2 = Math.Asin(Math.Sin(lat1) * Math.Cos(angularDistance) +
+                              Math.Cos(lat1) * Math.Sin(angularDistance) * Math.Cos(bearing));
+        var lon2 = lon1 + Math.Atan2(
+            Math.Sin(bearing) * Math.Sin(angularDistance) * Math.Cos(lat1),
+            Math.Cos(angularDistance) - Math.Sin(lat1) * Math.Sin(lat2));
+
+        return (lat2 * 180.0 / Math.PI, lon2 * 180.0 / Math.PI);
+    }
+
+    private static GeoPoint Geo(double lat, double lon)
+    {
+        return new GeoPoint { LatitudeCoordinate = lat, LongitudeCoordinate = lon };
+    }
+
+    // ---------------------------------------------------------------- helpers
 
     private static UpdateSituationObject OrganizationUnit(
         Identity reporter, Timestamp nowTs, string id, string name, UnitDesignation designation,
@@ -171,12 +256,27 @@ public sealed class SyntheticScenarioSource(
         return new UpdateSituationObject { OrganizationUnit = unit };
     }
 
-    private static UpdateSituationObject Route(
-        Identity reporter, Timestamp nowTs, (double Lat, double Lon)[] waypoints)
+    /// <summary>Route BRAVO: the patrol loop, as a RouteLocation with named, commented waypoints and ETAs.</summary>
+    private static UpdateSituationObject PatrolRoute(
+        Identity reporter, Timestamp nowTs, SyntheticScenarioOptions o, ScenarioGeometry geo)
     {
-        var line = new Line { LocationTime = nowTs, Name = "Patrol route BRAVO" };
-        foreach (var (lat, lon) in waypoints.Append(waypoints[0]))
-            line.Points.Add(new GeoPoint { LatitudeCoordinate = lat, LongitudeCoordinate = lon });
+        var wp = geo.PatrolWaypoints;
+        var legDuration = o.PatrolLapDuration / wp.Length;
+        var route = new RouteLocation { LocationTime = nowTs, Name = "Route BRAVO" };
+
+        for (var i = 0; i <= wp.Length; i++)
+        {
+            var point = wp[i % wp.Length];
+            route.WayPoints.Add(new WayPoint
+            {
+                LatitudeCoordinate = point.Lat,
+                LongitudeCoordinate = point.Lon,
+                WayPointName = point.Name,
+                Comment = point.Comment,
+                SegmentTravelTime = Duration.FromTimeSpan(legDuration),
+                ArrivalTime = Timestamp.FromDateTimeOffset(nowTs.ToDateTimeOffset() + legDuration * i)
+            });
+        }
 
         return new UpdateSituationObject
         {
@@ -186,8 +286,9 @@ public sealed class SyntheticScenarioSource(
                 Reporter = reporter,
                 ReportingTime = nowTs,
                 Name = new UpdatePropertyString { Content = "Route BRAVO" },
-                AdditionalInformation = new UpdatePropertyString { Content = "Daily patrol loop" },
-                Location = new UpdatePropertyLocation { Content = new SymbolLocation { Line = line } },
+                AdditionalInformation = new UpdatePropertyString
+                { Content = "Daily patrol loop, six checkpoints" },
+                Location = new UpdatePropertyLocation { Content = new SymbolLocation { RouteLocation = route } },
                 MarchSpeed = new UpdatePropertyInt { Content = 40 },
                 LineColor = new UpdatePropertyColor
                 { Content = new Color { Red = 0, Green = 128, Blue = 255, Alpha = 255 } },
@@ -198,11 +299,61 @@ public sealed class SyntheticScenarioSource(
         };
     }
 
-    /// <summary>Patrol vehicle position interpolated along the route perimeter.</summary>
-    private UpdateSituationObject PatrolSymbol(
-        SyntheticScenarioOptions o, DateTimeOffset now, (double Lat, double Lon)[] waypoints)
+    /// <summary>Route CHARLIE: a wide resupply air corridor from the rear area into the objective.</summary>
+    private static UpdateSituationObject SupportCorridor(Identity reporter, Timestamp nowTs, ScenarioGeometry geo)
     {
-        var (lat, lon, course) = PositionOnPerimeter(o, now, waypoints);
+        var corridor = new Corridor { LocationTime = nowTs, Name = "Route CHARLIE", Width = 500 };
+        corridor.Points.Add(Geo(geo.ForwardOperatingBase.Lat, geo.ForwardOperatingBase.Lon));
+        corridor.Points.Add(Geo(geo.ObjectiveCentroid.Lat, geo.ObjectiveCentroid.Lon));
+
+        return new UpdateSituationObject
+        {
+            Route = new UpdateRoute
+            {
+                Identity = new Identity { StringIdentity = "scenario:route:charlie" },
+                Reporter = reporter,
+                ReportingTime = nowTs,
+                Name = new UpdatePropertyString { Content = "Route CHARLIE" },
+                AdditionalInformation = new UpdatePropertyString
+                { Content = "Resupply air corridor, FOB to objective, 500 m wide" },
+                Location = new UpdatePropertyLocation { Content = new SymbolLocation { Corridor = corridor } },
+                MarchSpeed = new UpdatePropertyInt { Content = 60 },
+                LineColor = new UpdatePropertyColor
+                { Content = new Color { Red = 155, Green = 89, Blue = 182, Alpha = 255 } },
+                LineWidth = new UpdatePropertyInt { Content = 2 },
+                LineStyle = new UpdatePropertyLineStyle { Content = LineStyle.Dot },
+                RouteType = new UpdatePropertyRouteType { Content = RouteType.AirCorridor }
+            }
+        };
+    }
+
+    /// <summary>An objective/assembly area near Route BRAVO's village checkpoint, as a Polygon.</summary>
+    private static UpdateSituationObject ObjectiveArea(Identity reporter, Timestamp nowTs, ScenarioGeometry geo)
+    {
+        var polygon = new Polygon { LocationTime = nowTs, Name = "Objective HOTEL" };
+        foreach (var (lat, lon) in geo.ObjectiveArea) polygon.Points.Add(Geo(lat, lon));
+
+        return new UpdateSituationObject
+        {
+            Symbol = new UpdateSymbol
+            {
+                Identity = new Identity { StringIdentity = "scenario:objective:hotel" },
+                Reporter = reporter,
+                ReportingTime = nowTs,
+                Name = new UpdatePropertyString { Content = "Objective HOTEL" },
+                AdditionalInformation = new UpdatePropertyString
+                { Content = "Assembly area for phase 3, secure before nightfall" },
+                Location = new UpdatePropertyLocation { Content = new SymbolLocation { Polygon = polygon } },
+                ForeignKey = new UpdatePropertyIdentity
+                { Content = new Identity { StringIdentity = "GIS-4471" }, Source = "gis" }
+            }
+        };
+    }
+
+    /// <summary>Patrol vehicle position interpolated along the route perimeter.</summary>
+    private UpdateSituationObject PatrolSymbol(SyntheticScenarioOptions o, DateTimeOffset now, ScenarioGeometry geo)
+    {
+        var (lat, lon, course) = PositionOnPerimeter(o, now, geo.PatrolWaypoints);
         var track = new TrackReport(
             "scenario:symbol:patrol1",
             "PATROL 1 (1st Plt)",
@@ -221,7 +372,7 @@ public sealed class SyntheticScenarioSource(
     }
 
     private (double Lat, double Lon, double Course) PositionOnPerimeter(
-        SyntheticScenarioOptions o, DateTimeOffset now, (double Lat, double Lon)[] wp)
+        SyntheticScenarioOptions o, DateTimeOffset now, RouteWaypoint[] wp)
     {
         var lapFraction = (now - _epoch).TotalSeconds / o.PatrolLapDuration.TotalSeconds % 1.0;
         var segment = (int)(lapFraction * wp.Length);
@@ -237,9 +388,9 @@ public sealed class SyntheticScenarioSource(
 
     /// <summary>The patrol order; status and completion follow the current lap.</summary>
     private UpdateSituationObject PatrolTask(
-        SyntheticScenarioOptions o, Identity reporter, DateTimeOffset now, Timestamp nowTs,
-        (double Lat, double Lon)[] waypoints)
+        SyntheticScenarioOptions o, Identity reporter, DateTimeOffset now, Timestamp nowTs, ScenarioGeometry geo)
     {
+        var waypoints = geo.PatrolWaypoints;
         var lapFraction = (now - _epoch).TotalSeconds / o.PatrolLapDuration.TotalSeconds % 1.0;
         var status = lapFraction switch
         {
@@ -277,8 +428,7 @@ public sealed class SyntheticScenarioSource(
                     Point = new Point
                     {
                         LocationTime = nowTs,
-                        GeoPoint = new GeoPoint
-                        { LatitudeCoordinate = waypoints[0].Lat, LongitudeCoordinate = waypoints[0].Lon }
+                        GeoPoint = Geo(waypoints[0].Lat, waypoints[0].Lon)
                     }
                 }
             }
@@ -292,14 +442,14 @@ public sealed class SyntheticScenarioSource(
     }
 
     private UpdateSituationObject RandomIncident(
-        SyntheticScenarioOptions o, Identity reporter, DateTimeOffset now, Timestamp nowTs,
-        (double Lat, double Lon)[] waypoints)
+        SyntheticScenarioOptions o, Identity reporter, DateTimeOffset now, Timestamp nowTs, ScenarioGeometry geo)
     {
+        var waypoints = geo.PatrolWaypoints;
         (ActionEventType Type, string Name, int Threat)[] catalog =
         [
             (ActionEventType.SniperAttack, "Sniper attack", 4),
             (ActionEventType.ArtilleryFire, "Artillery fire observed", 5),
-            (ActionEventType.BoobyTrapDiscovery, "Booby trap discovered", 3),
+            (ActionEventType.BoobyTrapDiscovery, "Booby trap belt discovered", 3),
             (ActionEventType.AccidentTraffic, "Traffic accident", 1),
             (ActionEventType.FixAcoustic, "Acoustic fix", 2)
         ];
@@ -308,6 +458,17 @@ public sealed class SyntheticScenarioSource(
         var lat = anchor.Lat + (_random.NextDouble() - 0.5) * 0.02;
         var lon = anchor.Lon + (_random.NextDouble() - 0.5) * 0.02;
         var id = $"scenario:event:{Interlocked.Increment(ref _eventCounter):D5}";
+
+        var location = incident.Type switch
+        {
+            ActionEventType.SniperAttack => SensorArcLocation(nowTs, lat, lon),
+            ActionEventType.ArtilleryFire => ImpactAreaLocation(nowTs, lat, lon),
+            ActionEventType.BoobyTrapDiscovery => DeviceClusterLocation(nowTs, lat, lon),
+            _ => new SymbolLocation
+            {
+                Point = new Point { LocationTime = nowTs, GeoPoint = Geo(lat, lon) }
+            }
+        };
 
         return new UpdateSituationObject
         {
@@ -323,19 +484,65 @@ public sealed class SyntheticScenarioSource(
                 ThreatLevel = new UpdatePropertyInt { Content = incident.Threat },
                 DetectionDescription = new UpdatePropertyString
                 { Content = $"Reported by PATROL 1 near route BRAVO ({incident.Name.ToLowerInvariant()})" },
-                Location = new UpdatePropertyLocation
-                {
-                    Content = new SymbolLocation
-                    {
-                        Point = new Point
-                        {
-                            LocationTime = nowTs,
-                            GeoPoint = new GeoPoint { LatitudeCoordinate = lat, LongitudeCoordinate = lon }
-                        }
-                    }
-                }
+                Location = new UpdatePropertyLocation { Content = location }
             }
         };
+    }
+
+    /// <summary>An acoustic/optical sensor detection arc from an observation post - a Fan location.</summary>
+    private SymbolLocation SensorArcLocation(Timestamp nowTs, double lat, double lon)
+    {
+        return new SymbolLocation
+        {
+            Fan = new Fan
+            {
+                LocationTime = nowTs,
+                Name = "Detection arc",
+                VertexPoint = Geo(lat, lon),
+                OrientationAngle = _random.NextDouble() * 360,
+                SectorSizeAngle = 40 + _random.NextDouble() * 30,
+                MinimumRangeDimension = 50,
+                MaximumRangeDimension = 300 + _random.NextDouble() * 300
+            }
+        };
+    }
+
+    /// <summary>An artillery impact area (CEP-style) - an Ellipse elongated along a random impact axis.</summary>
+    private SymbolLocation ImpactAreaLocation(Timestamp nowTs, double lat, double lon)
+    {
+        var bearing = _random.NextDouble() * 360;
+        var semiMajorM = 150 + _random.NextDouble() * 100;
+        var semiMinorM = 60 + _random.NextDouble() * 60;
+        var major = Destination(lat, lon, bearing, semiMajorM);
+        var minor = Destination(lat, lon, bearing + 90, semiMinorM);
+
+        return new SymbolLocation
+        {
+            Ellipse = new Ellipse
+            {
+                LocationTime = nowTs,
+                Name = "Impact area",
+                CenterPoint = Geo(lat, lon),
+                FirstConjugateDiameterPoint = Geo(major.Lat, major.Lon),
+                SecondConjugateDiameterPoint = Geo(minor.Lat, minor.Lon)
+            }
+        };
+    }
+
+    /// <summary>A cluster of discovered devices near a single anchor point - a Multipoint location.</summary>
+    private SymbolLocation DeviceClusterLocation(Timestamp nowTs, double lat, double lon)
+    {
+        var multipoint = new Multipoint { LocationTime = nowTs, Name = "Device cluster" };
+        var count = 4 + _random.Next(3);
+        for (var i = 0; i < count; i++)
+        {
+            var bearing = _random.NextDouble() * 360;
+            var distance = 15 + _random.NextDouble() * 60;
+            var point = Destination(lat, lon, bearing, distance);
+            multipoint.Points.Add(Geo(point.Lat, point.Lon));
+        }
+
+        return new SymbolLocation { Multipoint = multipoint };
     }
 
     private UpdateSituationObject SitrepChat(Identity reporter, Timestamp nowTs, DateTimeOffset now)
@@ -390,8 +597,7 @@ public sealed class SyntheticScenarioSource(
         };
     }
 
-    private static UpdateSituationObject ReconPicture(
-        Identity reporter, Timestamp nowTs, (double Lat, double Lon) at)
+    private static UpdateSituationObject ReconPicture(Identity reporter, Timestamp nowTs, RouteWaypoint at)
     {
         return new UpdateSituationObject
         {
@@ -415,11 +621,7 @@ public sealed class SyntheticScenarioSource(
                 {
                     Content = new SymbolLocation
                     {
-                        Point = new Point
-                        {
-                            LocationTime = nowTs,
-                            GeoPoint = new GeoPoint { LatitudeCoordinate = at.Lat, LongitudeCoordinate = at.Lon }
-                        }
+                        Point = new Point { LocationTime = nowTs, GeoPoint = Geo(at.Lat, at.Lon) }
                     }
                 }
             }
@@ -443,12 +645,49 @@ public sealed class SyntheticScenarioSource(
         };
     }
 
-    private static UpdateSituationObject PlanningSketch(
-        Identity reporter, Timestamp nowTs, (double Lat, double Lon)[] waypoints)
+    /// <summary>
+    ///     A multi-element planning sketch: the objective outline (dashed, filled), the axis of
+    ///     advance from the start point to the objective (solid), and the objective's rally point
+    ///     (a marker) - each sketch element individually colored/styled.
+    /// </summary>
+    private static UpdateSituationObject PlanningSketch(Identity reporter, Timestamp nowTs, ScenarioGeometry geo)
     {
-        var line = new Line { LocationTime = nowTs, Name = "Approach sketch" };
-        line.Points.Add(new GeoPoint { LatitudeCoordinate = waypoints[0].Lat, LongitudeCoordinate = waypoints[0].Lon });
-        line.Points.Add(new GeoPoint { LatitudeCoordinate = waypoints[2].Lat, LongitudeCoordinate = waypoints[2].Lon });
+        var sketch = new SketchLocation { LocationTime = nowTs, Name = "Approach sketch" };
+
+        var objectivePolygon = new Polygon { Name = "Objective outline" };
+        foreach (var (lat, lon) in geo.ObjectiveArea) objectivePolygon.Points.Add(Geo(lat, lon));
+        sketch.Elements.Add(new SketchLocationElement
+        {
+            Location = new SymbolLocation { Polygon = objectivePolygon },
+            LineColor = new Color { Red = 220, Green = 50, Blue = 50, Alpha = 255 },
+            LineWidth = 2,
+            LineStyle = LineStyle.Dash,
+            FillStyle = FillStyle.DiagonalCross
+        });
+
+        var axisOfAdvance = new Line { Name = "Axis of advance" };
+        axisOfAdvance.Points.Add(Geo(geo.PatrolWaypoints[0].Lat, geo.PatrolWaypoints[0].Lon));
+        axisOfAdvance.Points.Add(Geo(geo.ObjectiveCentroid.Lat, geo.ObjectiveCentroid.Lon));
+        sketch.Elements.Add(new SketchLocationElement
+        {
+            Location = new SymbolLocation { Line = axisOfAdvance },
+            LineColor = new Color { Red = 0, Green = 128, Blue = 255, Alpha = 255 },
+            LineWidth = 3,
+            LineStyle = LineStyle.Solid
+        });
+
+        sketch.Elements.Add(new SketchLocationElement
+        {
+            Location = new SymbolLocation
+            {
+                Point = new Point
+                {
+                    Name = "Rally point",
+                    GeoPoint = Geo(geo.ObjectiveCentroid.Lat, geo.ObjectiveCentroid.Lon)
+                }
+            },
+            LineColor = new Color { Red = 240, Green = 200, Blue = 0, Alpha = 255 }
+        });
 
         return new UpdateSituationObject
         {
@@ -458,8 +697,9 @@ public sealed class SyntheticScenarioSource(
                 Reporter = reporter,
                 ReportingTime = nowTs,
                 Name = new UpdatePropertyString { Content = "Approach sketch" },
-                AdditionalInformation = new UpdatePropertyString { Content = "Planned approach for phase 2" },
-                Location = new UpdatePropertyLocation { Content = new SymbolLocation { Line = line } },
+                AdditionalInformation = new UpdatePropertyString
+                { Content = "Planned approach for phase 3: objective outline, axis of advance, rally point" },
+                Location = new UpdatePropertyLocation { Content = new SymbolLocation { SketchLocation = sketch } },
                 MessageCategory = new UpdatePropertyMessageCategory { Content = MessageCategoryType.Operational },
                 MessagePrecedence = new UpdatePropertyMessagePrecedence { Content = MessagePrecedenceType.Routine }
             }
@@ -468,7 +708,7 @@ public sealed class SyntheticScenarioSource(
 
     /// <summary>Overlay with two nested phase-line symbols as overlay content.</summary>
     private static UpdateSituationObject PhaseLineOverlay(
-        Identity reporter, Timestamp nowTs, (double Lat, double Lon)[] waypoints)
+        Identity reporter, Timestamp nowTs, RouteWaypoint[] waypoints)
     {
         var overlayData = new UpdatePropertySituationObjects();
         overlayData.Contents.Add(PhaseLineSymbol(reporter, nowTs, "scenario:overlay:pl-alpha", "PL ALPHA", waypoints[0],
@@ -493,12 +733,11 @@ public sealed class SyntheticScenarioSource(
     }
 
     private static UpdateSituationObject PhaseLineSymbol(
-        Identity reporter, Timestamp nowTs, string id, string name,
-        (double Lat, double Lon) from, (double Lat, double Lon) to)
+        Identity reporter, Timestamp nowTs, string id, string name, RouteWaypoint from, RouteWaypoint to)
     {
         var line = new Line { LocationTime = nowTs, Name = name };
-        line.Points.Add(new GeoPoint { LatitudeCoordinate = from.Lat, LongitudeCoordinate = from.Lon });
-        line.Points.Add(new GeoPoint { LatitudeCoordinate = to.Lat, LongitudeCoordinate = to.Lon });
+        line.Points.Add(Geo(from.Lat, from.Lon));
+        line.Points.Add(Geo(to.Lat, to.Lon));
 
         return new UpdateSituationObject
         {

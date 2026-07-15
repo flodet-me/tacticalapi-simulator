@@ -6,6 +6,13 @@ Everything lives under `Simulator` in `appsettings.json` and reloads at runtime 
 "Simulator": {
   "ReporterId": "TacticalAPI-Simulator",
   "ExpirySweepInterval": "00:00:10",
+  "MapUi": {
+    "Enabled": true,                       // false hides /ui, /api/objects and /api/config (404)
+    "RefreshInterval": "00:00:02",         // how often /ui polls /api/objects
+    "DefaultCenterLatitude": 53.08,        // initial map view, before any objects load
+    "DefaultCenterLongitude": 8.8,
+    "DefaultZoom": 9
+  },
   "Performance": {
     "SubscriberChannelCapacity": 4096,     // per-subscriber event buffer
     "SubscriberChannelFullMode": "DropOldest", // or "Wait" for backpressure
