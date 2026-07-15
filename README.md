@@ -14,6 +14,7 @@ dotnet run --project src/TacticalApi.Simulator.Host
 - **gRPC-Web endpoint: `http://localhost:4268`** (HTTP/1.1) — the official Rheinmetall test client (`testclient/csharp`, which uses `GrpcWebHandler` against this exact address) works against the simulator without changes.
 - **Native gRPC endpoint: `http://localhost:5100`** (HTTP/2 h2c) — with `Grpc.Net.Client` simply `GrpcChannel.ForAddress("http://localhost:5100")`.
 - Status endpoint: `http://localhost:4268/` in the browser (object count, subscriber count).
+- Situation map: `http://localhost:4268/ui` — a read-only web GUI plotting the current situation objects on a map, polling `/api/objects` every 2s.
 - gRPC server reflection is enabled, so `grpcurl` works out of the box:
 
 ```bash

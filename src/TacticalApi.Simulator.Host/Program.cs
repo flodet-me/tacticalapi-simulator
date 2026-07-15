@@ -4,6 +4,7 @@ using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
+using TacticalApi.Simulator.Host.Web;
 using TacticalApi.Simulator.Sources.Nws;
 using TacticalApi.Simulator.Sources.OpenSky;
 using TacticalApi.Simulator.Sources.Synthetic;
@@ -50,6 +51,11 @@ app.MapGet("/", (SituationStore store,
         subscribers = broker.SubscriberCount,
         reporterId = options.CurrentValue.ReporterId
     }));
+
+// Read-only map GUI: static files under wwwroot/ui, backed by a JSON snapshot endpoint.
+app.UseStaticFiles();
+app.MapGet("/ui", () => Results.Redirect("/ui/index.html"));
+app.MapGet("/api/objects", (SituationStore store) => Results.Ok(SituationObjectMapper.Map(store.GetSnapshot())));
 
 app.Run();
 
