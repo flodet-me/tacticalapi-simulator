@@ -18,6 +18,8 @@ public static class AdapterHost
     /// <summary>Builds, configures, and runs the adapter host; blocks until shutdown.</summary>
     public static void Run(string[] args, Action<IServiceCollection, IConfiguration> configureSources)
     {
+        AppSettingsBootstrap.EnsureAppSettingsFile();
+
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddSituationIngestClient(builder.Configuration);

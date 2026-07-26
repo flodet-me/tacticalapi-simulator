@@ -5,7 +5,7 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 
 /// <summary>
 ///     Options for the offline synthetic air picture. Bound from
-///     "Simulator:Sources:SyntheticAirTracks" and read via IOptionsMonitor, so
+///     "Simulator:SyntheticAirTracks" and read via IOptionsMonitor, so
 ///     TrackCount / UpdateInterval / speeds can be changed while running.
 /// </summary>
 public sealed class SyntheticAirTrackOptions() : TrackEmitterOptions(
@@ -14,7 +14,7 @@ public sealed class SyntheticAirTrackOptions() : TrackEmitterOptions(
     TimeSpan.FromSeconds(30))
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticAirTracks";
+    public const string SectionName = SimulatorOptions.SectionName + ":SyntheticAirTracks";
 
     /// <summary>Enabled by default since this source needs no network access.</summary>
     public bool Enabled { get; set; } = true;

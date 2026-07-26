@@ -6,12 +6,12 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// <summary>
 ///     Options for the synthetic scenario source that exercises ALL situation
 ///     object types of the TacticalAPI. Bound from
-///     "Simulator:Sources:SyntheticScenario" via IOptionsMonitor (hot-reloadable).
+///     "Simulator:SyntheticScenario" via IOptionsMonitor (hot-reloadable).
 /// </summary>
 public sealed class SyntheticScenarioOptions
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SourcesSectionName + ":SyntheticScenario";
+    public const string SectionName = SimulatorOptions.SectionName + ":SyntheticScenario";
 
     /// <summary>Enabled by default since this source needs no network access.</summary>
     public bool Enabled { get; set; } = true;

@@ -50,8 +50,11 @@ AdapterHost.Run(args, (services, configuration) => services.AddAisSources(config
 ```
 
 Plus its own `appsettings.json` with `Simulator:Ingest:Address` (defaults to the Host's own endpoint)
-and `Simulator:Sources:Ais`. See [`Adapter.OpenSky`](../src/TacticalApi.Simulator.Adapter.OpenSky) for
-a working example of this exact shape, and add the new project to `TacticalApi.Simulator.slnx`.
+and `Simulator:Ais`, included both as `Content` (so it's copied next to the built executable) and as
+`<EmbeddedResource Include="appsettings.json"/>` (so `AppSettingsBootstrap` can regenerate it from that
+exact file if it's ever missing at runtime - see [Configuration](CONFIGURATION.md)). See
+[`Adapter.OpenSky`](../src/TacticalApi.Simulator.Adapter.OpenSky) for a working example of this exact
+shape, and add the new project to `TacticalApi.Simulator.slnx`.
 
 Each source gets its own `SimulationSourceRunner` background service (so a slow or failing source
 never stalls others in the same adapter; exceptions are logged and retried next cycle) and, per the

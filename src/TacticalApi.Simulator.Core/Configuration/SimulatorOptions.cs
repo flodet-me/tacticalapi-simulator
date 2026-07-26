@@ -12,9 +12,6 @@ public sealed class SimulatorOptions
     /// <summary>Configuration section name this options type binds to.</summary>
     public const string SectionName = "Simulator";
 
-    /// <summary>Shared parent section for every <c>ISimulationSource</c>'s own options.</summary>
-    public const string SourcesSectionName = SectionName + ":Sources";
-
     /// <summary>
     ///     Reporter identity the simulator itself uses (expiry sweeps etc.).
     ///     The TacticalAPI docs suggest "TacticalAPI" when in doubt.

@@ -8,7 +8,7 @@ see [Extending the simulator](../../docs/EXTENDING.md).
 ## `OpenSkySource`
 
 Registered via `AddOpenSkySources` (`OpenSkyServiceCollectionExtensions.cs`). Config section:
-`Simulator:Sources:OpenSky`, bound to `OpenSkyOptions`. **Disabled by default** so the simulator runs fully offline out
+`Simulator:OpenSky`, bound to `OpenSkyOptions`. **Disabled by default** so the simulator runs fully offline out
 of the box.
 
 ### How it works

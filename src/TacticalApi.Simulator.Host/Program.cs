@@ -6,6 +6,8 @@ using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
 using TacticalApi.Simulator.Host.Web;
 
+AppSettingsBootstrap.EnsureAppSettingsFile();
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Options via IOptionsMonitor: bound, validated at startup, hot-reloadable

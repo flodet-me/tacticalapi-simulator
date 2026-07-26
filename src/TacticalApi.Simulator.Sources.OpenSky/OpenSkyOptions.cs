@@ -5,7 +5,7 @@ namespace TacticalApi.Simulator.Sources.OpenSky;
 
 /// <summary>
 ///     Options for the OpenSky Network live flight source, bound from
-///     "Simulator:Sources:OpenSky". Anonymous OpenSky access is rate limited, so
+///     "Simulator:OpenSky". Anonymous OpenSky access is rate limited, so
 ///     keep PollInterval conservative (>= 10s recommended).
 /// </summary>
 public sealed class OpenSkyOptions() : TrackEmitterOptions(
@@ -14,7 +14,7 @@ public sealed class OpenSkyOptions() : TrackEmitterOptions(
     TimeSpan.FromMinutes(2))
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SourcesSectionName + ":OpenSky";
+    public const string SectionName = SimulatorOptions.SectionName + ":OpenSky";
 
     /// <summary>Disabled by default so the simulator runs fully offline out of the box.</summary>
     public bool Enabled { get; set; }

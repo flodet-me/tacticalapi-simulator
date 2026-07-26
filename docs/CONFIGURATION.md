@@ -2,6 +2,8 @@
 
 Every executable has its own `appsettings.json` and reloads at runtime (see [Architecture](ARCHITECTURE.md) — options are bound via `IOptionsMonitor` and re-read every cycle, no restart needed).
 
+If an executable's `appsettings.json` is missing next to it at startup (e.g. a bare copy of just the `.dll`, or a fresh volume mount), it writes one out from its own embedded copy — the exact file shown below for that executable — before loading configuration, so you always get a discoverable, editable file rather than a process silently running on in-memory defaults. See `AppSettingsBootstrap` in `TacticalApi.Simulator.Core`. This only applies to the base `appsettings.json`; `appsettings.{Environment}.json` is an optional override layer and is never generated.
+
 ## Host (`src/TacticalApi.Simulator.Host/appsettings.json`)
 
 The Host runs only the simulated `Situation` gRPC service, store, and map UI - it has no data sources of its own.
@@ -31,16 +33,14 @@ Performance-relevant behavior is configuration, not code: channel sizes, overflo
 
 ## Each adapter (`src/TacticalApi.Simulator.Adapter.*/appsettings.json`)
 
-Every `Adapter.*` executable's own `appsettings.json` has just two things: where it pushes updates to, and its one source's own settings.
+Every `Adapter.*` executable's own `appsettings.json` has just two things: where it pushes updates to, and its own source's settings sitting directly under `Simulator` (no extra `Sources` nesting - that only ever mattered when every source's config lived together in one shared file, before the Host/adapter split; now each file already belongs to one adapter, so the source's own name is enough).
 
 ```jsonc
 "Simulator": {
   "Ingest": {
     "Address": "http://localhost:5100"  // where this adapter pushes updates - see below
   },
-  "Sources": {
-    "OpenSky": { /* only present in Adapter.OpenSky's appsettings.json - see Sources.OpenSky's README */ }
-  }
+  "OpenSky": { /* only present in Adapter.OpenSky's appsettings.json - see Sources.OpenSky's README */ }
 }
 ```
 

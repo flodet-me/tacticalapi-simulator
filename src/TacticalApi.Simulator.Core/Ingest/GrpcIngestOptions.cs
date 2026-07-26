@@ -5,10 +5,11 @@ namespace TacticalApi.Simulator.Core.Ingest;
 
 /// <summary>
 ///     Configures the gRPC endpoint that simulation sources push updates to via
-///     <see cref="GrpcSituationIngest" />. Defaults to the simulator's own
-///     native gRPC endpoint, so sources keep working out of the box, but
-///     pointing this at a different address lets the same sources drive any
-///     other implementation of the TacticalAPI contract instead.
+///     <see cref="GrpcSituationIngest" /> - any implementation of the TacticalAPI
+///     contract, not necessarily this repo's own <c>Host</c>. Defaults to the
+///     Host's native gRPC endpoint so sources keep working out of the box when
+///     run alongside it, but pointing this at a different address drives any
+///     other TacticalAPI implementation instead.
 /// </summary>
 public sealed class GrpcIngestOptions
 {

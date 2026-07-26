@@ -6,7 +6,7 @@ and a scripted mini scenario that exercises every situation object type in the T
 ## `SyntheticAirTrackSource`
 
 Registered via `AddSyntheticSources` (`SyntheticServiceCollectionExtensions.cs`). Config section:
-`Simulator:Sources:SyntheticAirTracks`, bound to `SyntheticAirTrackOptions`.
+`Simulator:SyntheticAirTracks`, bound to `SyntheticAirTrackOptions`.
 
 ### How it works
 
@@ -39,7 +39,7 @@ Simulates `TrackCount` aircraft flying circular orbits around a center point:
 
 ## `SyntheticScenarioSource`
 
-Config section: `Simulator:Sources:SyntheticScenario`, bound to `SyntheticScenarioOptions`. **Enabled by default** —
+Config section: `Simulator:SyntheticScenario`, bound to `SyntheticScenarioOptions`. **Enabled by default** —
 this is what populates the simulator out of the box.
 
 ### How it works

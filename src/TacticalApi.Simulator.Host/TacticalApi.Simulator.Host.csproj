@@ -17,4 +17,11 @@
     <PackageReference Include="Grpc.AspNetCore.Web"/>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embedded alongside the usual Content copy so AppSettingsBootstrap can
+         regenerate appsettings.json from this exact file if it's ever missing
+         next to the running executable. -->
+    <EmbeddedResource Include="appsettings.json"/>
+  </ItemGroup>
+
 </Project>
