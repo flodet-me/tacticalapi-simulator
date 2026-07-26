@@ -19,13 +19,16 @@ namespace TacticalApi.Simulator.Core.Store;
 ///     writes are serialized by a single gate and use copy-on-write, so any
 ///     SituationObject instance handed out is never mutated afterwards and can be
 ///     streamed to subscribers without cloning (a deliberate performance choice).
+///     This is the server-side write path: the gRPC service applies incoming
+///     RPCs directly here. Simulation sources never touch this class - they go
+///     through <see cref="ISituationIngest" />, a real gRPC client, same as any
+///     other external caller.
 /// </summary>
 public sealed class SituationStore(
     IEnumerable<ISituationObjectMerger> mergers,
     SituationEventBroker broker,
     IOptionsMonitor<SimulatorOptions> options,
     ILogger<SituationStore> logger)
-    : ISituationIngest
 {
     private readonly Dictionary<string, Timestamp> _lastReportingTime = [];
     private readonly FrozenMergerLookup _mergers = new(mergers);
@@ -35,7 +38,7 @@ public sealed class SituationStore(
     /// <summary>Number of situation objects currently held (including soft-deleted ones).</summary>
     public int Count => _objects.Count;
 
-    /// <inheritdoc/>
+    /// <summary>Applies add/update messages. Returns per-batch success.</summary>
     public IngestResult AddOrUpdate(IReadOnlyList<UpdateSituationObject> updates)
     {
         if (updates.Count == 0) return IngestResult.Ok;
@@ -102,7 +105,7 @@ public sealed class SituationStore(
         return IngestResult.Ok;
     }
 
-    /// <inheritdoc/>
+    /// <summary>Marks objects as deleted.</summary>
     public IngestResult Delete(IReadOnlyList<DeleteSituationObject> deletes)
     {
         if (deletes.Count == 0) return IngestResult.Ok;

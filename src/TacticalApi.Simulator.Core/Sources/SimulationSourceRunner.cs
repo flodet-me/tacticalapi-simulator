@@ -68,7 +68,7 @@ public sealed class SimulationSourceRunner<TSource>(
 
                 if (updates.Count > 0)
                 {
-                    var result = ingest.AddOrUpdate(updates);
+                    var result = await ingest.AddOrUpdateAsync(updates, stoppingToken).ConfigureAwait(false);
                     if (!result.Success)
                         logger.IngestFailed(_source.Name, result.ErrorMessage);
                 }

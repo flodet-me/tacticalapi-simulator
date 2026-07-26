@@ -33,7 +33,7 @@ builder.Services.AddGrpc(options =>
 });
 builder.Services.AddGrpcReflection();
 
-builder.Services.AddSimulatorCore();
+builder.Services.AddSimulatorCore(builder.Configuration);
 builder.Services.AddNwsSources(builder.Configuration);
 builder.Services.AddOpenSkySources(builder.Configuration);
 builder.Services.AddSyntheticSources(builder.Configuration);

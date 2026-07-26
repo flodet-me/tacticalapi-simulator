@@ -3,7 +3,6 @@ using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
-using TacticalApi.Simulator.Core.Ingest;
 using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Logging;
 
@@ -17,22 +16,19 @@ namespace TacticalApi.Simulator.Host.Services;
 public sealed class SituationGrpcService : Situation.SituationBase
 {
     private readonly SituationEventBroker _broker;
-    private readonly ISituationIngest _ingest;
     private readonly ILogger<SituationGrpcService> _logger;
     private readonly IOptionsMonitor<SimulatorOptions> _options;
     private readonly SituationStore _store;
 
-    /// <summary>Creates the service with its store/broker/ingest/config/logging dependencies.</summary>
+    /// <summary>Creates the service with its store/broker/config/logging dependencies.</summary>
     public SituationGrpcService(
         SituationStore store,
         SituationEventBroker broker,
-        ISituationIngest ingest,
         IOptionsMonitor<SimulatorOptions> options,
         ILogger<SituationGrpcService> logger)
     {
         _store = store;
         _broker = broker;
-        _ingest = ingest;
         _options = options;
         _logger = logger;
     }
@@ -55,7 +51,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         AddOrUpdateSituationObjectsRequest request, ServerCallContext context)
     {
         _logger.AddOrUpdateReceived(request.SituationObjects.Count);
-        var result = _ingest.AddOrUpdate(request.SituationObjects);
+        var result = _store.AddOrUpdate(request.SituationObjects);
         if (!result.Success) _logger.AddOrUpdateFailed(result.ErrorMessage);
         return Task.FromResult(new AddOrUpdateSituationObjectsResponse { Header = result.ToHeader() });
     }
@@ -65,7 +61,7 @@ public sealed class SituationGrpcService : Situation.SituationBase
         DeleteSituationObjectsRequest request, ServerCallContext context)
     {
         _logger.DeleteReceived(request.SituationObjects.Count);
-        var result = _ingest.Delete(request.SituationObjects);
+        var result = _store.Delete(request.SituationObjects);
         if (!result.Success) _logger.DeleteFailed(result.ErrorMessage);
         return Task.FromResult(new DeleteSituationObjectsResponse { Header = result.ToHeader() });
     }

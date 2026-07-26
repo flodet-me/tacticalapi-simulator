@@ -16,14 +16,14 @@ public sealed class HostedPipelineE2ETests
     [Fact]
     public async Task ScenarioSource_PopulatesAllElevenObjectTypes_EndToEnd()
     {
-        using var factory = new SimulatorFactory(new Dictionary<string, string?>
+        await using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "true",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.UpdateInterval)}"] =
                 "00:00:00.500",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.EventProbability)}"] = "1.0",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.ChatProbability)}"] = "1.0"
-        });
+        }, useRealServer: true);
         var client = factory.CreateGrpcClient();
         var expectedCases = Enum.GetValues<SituationObject.TypeOneofCase>()
             .Where(c => c != SituationObject.TypeOneofCase.None)

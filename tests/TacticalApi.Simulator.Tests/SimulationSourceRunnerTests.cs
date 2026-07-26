@@ -156,15 +156,17 @@ public sealed class SimulationSourceRunnerTests
         public List<IReadOnlyList<UpdateSituationObject>> AddOrUpdateCalls { get; } = [];
         public IngestResult NextResult { get; set; } = IngestResult.Ok;
 
-        public IngestResult AddOrUpdate(IReadOnlyList<UpdateSituationObject> updates)
+        public Task<IngestResult> AddOrUpdateAsync(
+            IReadOnlyList<UpdateSituationObject> updates, CancellationToken cancellationToken = default)
         {
             AddOrUpdateCalls.Add(updates);
-            return NextResult;
+            return Task.FromResult(NextResult);
         }
 
-        public IngestResult Delete(IReadOnlyList<DeleteSituationObject> deletes)
+        public Task<IngestResult> DeleteAsync(
+            IReadOnlyList<DeleteSituationObject> deletes, CancellationToken cancellationToken = default)
         {
-            return IngestResult.Ok;
+            return Task.FromResult(IngestResult.Ok);
         }
     }
 }
