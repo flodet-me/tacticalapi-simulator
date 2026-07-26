@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TacticalApi.Simulator.Core.Configuration;
 
 namespace TacticalApi.Simulator.Core.Ingest;
 
@@ -12,7 +13,7 @@ namespace TacticalApi.Simulator.Core.Ingest;
 public sealed class GrpcIngestOptions
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = "Simulator:Ingest";
+    public const string SectionName = SimulatorOptions.SectionName + ":Ingest";
 
     /// <summary>Address of the TacticalAPI gRPC endpoint sources write to.</summary>
     [Required]

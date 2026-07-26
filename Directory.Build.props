@@ -22,5 +22,12 @@
          already fails the build, not just CI's separate "Vulnerability scan"
          step. -->
     <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- Microsoft.NET.Sdk.Web sets this to the project directory itself (so
+         `dotnet run` finds appsettings.json regardless of the caller's cwd);
+         plain Microsoft.NET.Sdk console apps don't, and would otherwise load
+         config relative to wherever `dotnet run`/the shell happened to be
+         invoked from. Set it repo-wide so every executable here - Host and
+         every Adapter.* - behaves the same way. -->
+    <RunWorkingDirectory Condition="'$(RunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</RunWorkingDirectory>
   </PropertyGroup>
 </Project>

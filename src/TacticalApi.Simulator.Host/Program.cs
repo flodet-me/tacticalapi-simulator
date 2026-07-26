@@ -5,9 +5,6 @@ using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
 using TacticalApi.Simulator.Host.Web;
-using TacticalApi.Simulator.Sources.Nws;
-using TacticalApi.Simulator.Sources.OpenSky;
-using TacticalApi.Simulator.Sources.Synthetic;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,10 +30,7 @@ builder.Services.AddGrpc(options =>
 });
 builder.Services.AddGrpcReflection();
 
-builder.Services.AddSimulatorCore(builder.Configuration);
-builder.Services.AddNwsSources(builder.Configuration);
-builder.Services.AddOpenSkySources(builder.Configuration);
-builder.Services.AddSyntheticSources(builder.Configuration);
+builder.Services.AddSituationServer();
 
 var app = builder.Build();
 

@@ -1,5 +1,8 @@
 <Solution>
     <Folder Name="/src/">
+        <Project Path="src/TacticalApi.Simulator.Adapter.Nws/TacticalApi.Simulator.Adapter.Nws.csproj"/>
+        <Project Path="src/TacticalApi.Simulator.Adapter.OpenSky/TacticalApi.Simulator.Adapter.OpenSky.csproj"/>
+        <Project Path="src/TacticalApi.Simulator.Adapter.Synthetic/TacticalApi.Simulator.Adapter.Synthetic.csproj"/>
         <Project Path="src/TacticalApi.Simulator.Contracts/TacticalApi.Simulator.Contracts.csproj"/>
         <Project Path="src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj"/>
         <Project Path="src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj"/>

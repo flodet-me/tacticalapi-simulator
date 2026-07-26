@@ -2,47 +2,18 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Configuration;
-using TacticalApi.Simulator.Sources.Synthetic;
 using Xunit;
 
 namespace TacticalApi.Simulator.E2ETests;
 
 /// <summary>
-///     E2E tests for the hosted parts: the scenario source feeding the situation
-///     in the background, the expiry sweeper, and the HTTP status endpoint.
+///     E2E tests for the Host on its own: the expiry sweeper and the HTTP
+///     status endpoint. Coverage that involves a data source feeding the
+///     situation lives in <c>AdapterIntegrationE2ETests</c> instead, since
+///     sources are a separate adapter executable now, not part of the Host.
 /// </summary>
 public sealed class HostedPipelineE2ETests
 {
-    [Fact]
-    public async Task ScenarioSource_PopulatesAllElevenObjectTypes_EndToEnd()
-    {
-        await using var factory = new SimulatorFactory(new Dictionary<string, string?>
-        {
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "true",
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.UpdateInterval)}"] =
-                "00:00:00.500",
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.EventProbability)}"] = "1.0",
-            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.ChatProbability)}"] = "1.0"
-        }, useRealServer: true);
-        var client = factory.CreateGrpcClient();
-        var expectedCases = Enum.GetValues<SituationObject.TypeOneofCase>()
-            .Where(c => c != SituationObject.TypeOneofCase.None)
-            .ToHashSet();
-        using var cts = new CancellationTokenSource(E2E.Timeout);
-
-        while (!cts.IsCancellationRequested)
-        {
-            var get = await client.GetSituationObjectsAsync(
-                new GetSituationObjectsRequest(), cancellationToken: cts.Token);
-            var presentCases = get.SituationObjects.Select(o => o.TypeCase).ToHashSet();
-            if (expectedCases.IsSubsetOf(presentCases)) return; // every object type of the contract observed over gRPC
-
-            await Task.Delay(250, cts.Token);
-        }
-
-        Assert.Fail("Scenario source did not produce all 11 object types in time.");
-    }
-
     [Fact]
     public async Task ExpirySweeper_MarksExpiredObjectsDeleted_EndToEnd()
     {

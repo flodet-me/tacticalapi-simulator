@@ -25,15 +25,38 @@ public sealed class AisShipSource(IHttpClientFactory http, IOptionsMonitor<AisOp
 }
 ```
 
-2. Register it with its options:
+2. Register it with its options, in a `services.AddXyzSources(configuration)` extension method
+   (see `OpenSkyServiceCollectionExtensions.AddOpenSkySources` for the template — it's a few lines):
 
 ```csharp
-services.AddOptions<AisOptions>().Bind(config.GetSection("Simulator:Sources:Ais"))
-    .ValidateDataAnnotations().ValidateOnStart();
-services.AddSimulationSource<AisShipSource>();
+public static IServiceCollection AddAisSources(this IServiceCollection services, IConfiguration configuration)
+{
+    services.AddOptions<AisOptions>().Bind(configuration.GetSection(AisOptions.SectionName))
+        .ValidateDataAnnotations().ValidateOnStart();
+    services.AddSimulationSource<AisShipSource>();
+    return services;
+}
 ```
 
-Each source gets its own `SimulationSourceRunner` background service, so a slow or failing source never stalls the others; exceptions are logged and retried next cycle.
+3. Give it its own adapter executable — a new `TacticalApi.Simulator.Adapter.Ais` project (plain
+   `Microsoft.NET.Sdk`, `<OutputType>Exe</OutputType>`), referencing only `Core` and your new
+   `Sources.Ais` project. Its entire `Program.cs`:
+
+```csharp
+using TacticalApi.Simulator.Core;
+using TacticalApi.Simulator.Sources.Ais;
+
+AdapterHost.Run(args, (services, configuration) => services.AddAisSources(configuration));
+```
+
+Plus its own `appsettings.json` with `Simulator:Ingest:Address` (defaults to the Host's own endpoint)
+and `Simulator:Sources:Ais`. See [`Adapter.OpenSky`](../src/TacticalApi.Simulator.Adapter.OpenSky) for
+a working example of this exact shape, and add the new project to `TacticalApi.Simulator.slnx`.
+
+Each source gets its own `SimulationSourceRunner` background service (so a slow or failing source
+never stalls others in the same adapter; exceptions are logged and retried next cycle) and, per the
+pattern above, its own adapter process entirely - it never touches the Host, which has no sources of
+its own (see [Architecture](ARCHITECTURE.md)).
 
 ## Adding support for more situation object types
 

@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Grpc.Net.Client"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting"/>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.Options"/>

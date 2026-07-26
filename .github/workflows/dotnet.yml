@@ -17,13 +17,21 @@ env:
 
 jobs:
   # Single job for everything that needs a restored solution: format, NuGet
-  # vulnerability scan, build+test+coverage, SBOM+license check, publish, and
-  # the Docker image (build + vulnerability scan + image SBOM). Kept as one
-  # job (rather than separate format-check/sbom jobs) so there's exactly one
+  # vulnerability scan, build+test+coverage, SBOM+license check, and
+  # publishing each executable as a downloadable artifact. Kept as one job
+  # (rather than separate format-check/sbom jobs) so there's exactly one
   # checkout/restore instead of three - the trade-off is that a formatting
   # typo now fails after the full pipeline runs instead of in ~15 seconds.
+  # Docker image build/scan/SBOM for each of the four executables lives in
+  # the separate docker-images job below - those steps are self-contained
+  # (see docs/CI.md) and don't need anything from here except the version
+  # metadata this job computes.
   build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      full_version: ${{ steps.version.outputs.full_version }}
+      image_tag: ${{ steps.version.outputs.image_tag }}
+      artifact_suffix: ${{ steps.version.outputs.artifact_suffix }}
     steps:
       - name: Checkout (including TacticalAPI submodule)
         uses: actions/checkout@v7
@@ -114,8 +122,9 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
-          # Scoped to the Host + its Sources.* dependencies (excludes dev/test-only
-          # tooling) - what's actually in the Docker image, not the whole solution.
+          # Scoped to the Host, every Adapter.*, and their Sources.* dependencies
+          # (excludes dev/test-only tooling) - what's actually in the Docker
+          # images, not the whole solution.
           dotnet tool install --global CycloneDX --version 6.2.0
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet-CycloneDX TacticalApi.Simulator.slnx \
@@ -169,19 +178,81 @@ jobs:
           EOF
 
       - name: Publish host
-        run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish
+        run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish/host
+
+      - name: Publish adapter (OpenSky)
+        run: dotnet publish src/TacticalApi.Simulator.Adapter.OpenSky --configuration Release --no-build --output ./publish/adapter-opensky
+
+      - name: Publish adapter (NWS)
+        run: dotnet publish src/TacticalApi.Simulator.Adapter.Nws --configuration Release --no-build --output ./publish/adapter-nws
+
+      - name: Publish adapter (Synthetic)
+        run: dotnet publish src/TacticalApi.Simulator.Adapter.Synthetic --configuration Release --no-build --output ./publish/adapter-synthetic
 
       - name: Upload host artifact
         uses: actions/upload-artifact@v7
         with:
-          name: tacticalapi-simulator-${{ steps.version.outputs.artifact_suffix }}
-          path: ./publish
+          name: tacticalapi-simulator-host-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/host
+
+      - name: Upload adapter artifact (OpenSky)
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-simulator-adapter-opensky-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/adapter-opensky
+
+      - name: Upload adapter artifact (NWS)
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-simulator-adapter-nws-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/adapter-nws
+
+      - name: Upload adapter artifact (Synthetic)
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-simulator-adapter-synthetic-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/adapter-synthetic
+
+  # Builds, CVE-scans, and SBOMs each of the four container images (the Host
+  # server and every Adapter.*) in parallel via a matrix - each executable has
+  # its own colocated Dockerfile (src/<project>/Dockerfile), not shared build
+  # stages selected by --target, so a project's container build lives with
+  # its own code. A separate job rather than more build-and-test steps: each
+  # `docker build` already redoes its own restore/build/publish from scratch
+  # (see docs/CI.md) - it needs nothing build-and-test produced, only the
+  # version metadata already computed there.
+  docker-images:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: host
+            dockerfile: src/TacticalApi.Simulator.Host/Dockerfile
+            image: tacticalapi-simulator
+          - name: adapter-opensky
+            dockerfile: src/TacticalApi.Simulator.Adapter.OpenSky/Dockerfile
+            image: tacticalapi-simulator-adapter-opensky
+          - name: adapter-nws
+            dockerfile: src/TacticalApi.Simulator.Adapter.Nws/Dockerfile
+            image: tacticalapi-simulator-adapter-nws
+          - name: adapter-synthetic
+            dockerfile: src/TacticalApi.Simulator.Adapter.Synthetic/Dockerfile
+            image: tacticalapi-simulator-adapter-synthetic
+    steps:
+      - name: Checkout (including TacticalAPI submodule)
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
       - name: Build Docker image
         run: >
           docker build
-          --build-arg VERSION=${{ steps.version.outputs.full_version }}
-          --tag tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+          -f ${{ matrix.dockerfile }}
+          --build-arg VERSION=${{ needs.build-and-test.outputs.full_version }}
+          --tag ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }}
           .
 
       - name: Get current date for Trivy DB cache key
@@ -210,12 +281,15 @@ jobs:
             --severity CRITICAL,HIGH \
             --ignore-unfixed \
             --exit-code 1 \
-            tacticalapi-simulator:${{ steps.version.outputs.image_tag }}
+            ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }}
 
       - name: Generate Docker image SBOM
         run: |
           # Covers what the source-level SBOM above can't see: the OS base
-          # image's packages, not just the .NET/NuGet dependency graph.
+          # image's packages (mcr.microsoft.com/dotnet/aspnet for the host,
+          # the smaller mcr.microsoft.com/dotnet/runtime for adapters - plain
+          # console apps, no ASP.NET Core needed), not just the .NET/NuGet
+          # dependency graph.
           # Written to stdout rather than via -v <path>:/out - that bind mount
           # is resolved by the Docker daemon, not this shell, and the two
           # disagree on paths under act's nested-container setup.
@@ -224,13 +298,13 @@ jobs:
             -v ${{ runner.temp }}/trivy-cache:/root/.cache/trivy \
             aquasec/trivy:latest image \
             --format cyclonedx \
-            tacticalapi-simulator:${{ steps.version.outputs.image_tag }} \
+            ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }} \
             > image-sbom.json
 
       - name: Upload Docker image SBOM artifact
         uses: actions/upload-artifact@v7
         with:
-          name: image-sbom-${{ steps.version.outputs.artifact_suffix }}
+          name: image-sbom-${{ matrix.name }}-${{ needs.build-and-test.outputs.artifact_suffix }}
           path: image-sbom.json
 
   # Builds against the LATEST upstream TacticalAPI contract (submodule moved

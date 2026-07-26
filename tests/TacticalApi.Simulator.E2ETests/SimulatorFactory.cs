@@ -4,16 +4,16 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Hosting;
 using Rheinmetall.TacticalApi.V0;
-using TacticalApi.Simulator.Sources.Nws;
-using TacticalApi.Simulator.Sources.OpenSky;
-using TacticalApi.Simulator.Sources.Synthetic;
 
 namespace TacticalApi.Simulator.E2ETests;
 
 /// <summary>
 ///     Boots the REAL simulator host (Program.cs, full DI, gRPC pipeline) on an
-///     in-memory TestServer. Simulation sources are disabled by default so tests
-///     are deterministic; individual fixtures re-enable them via settings.
+///     in-memory TestServer. The Host has no simulation sources of its own -
+///     those live in the separate Adapter.* executables - so there's nothing
+///     to disable here for determinism; only tests that spin up an adapter
+///     alongside it (see <c>AdapterIntegrationE2ETests</c>) need
+///     <paramref name="useRealServer" />.
 /// </summary>
 public class SimulatorFactory : WebApplicationFactory<Program>
 {
@@ -29,11 +29,11 @@ public class SimulatorFactory : WebApplicationFactory<Program>
 
     /// <summary>
     ///     Used by tests that need specific configuration overrides. Pass
-    ///     <paramref name="useRealServer" /> when a test enables a simulation
-    ///     source: sources now push updates via a real gRPC client dialing
-    ///     <c>Simulator:Ingest:Address</c> (default http://localhost:5100), and
-    ///     an in-memory TestServer has no real address for that client to
-    ///     connect back to - only a real Kestrel socket does.
+    ///     <paramref name="useRealServer" /> when a test also runs an adapter
+    ///     against this Host: the adapter's gRPC client dials a real address
+    ///     (default http://localhost:5100), and an in-memory TestServer has no
+    ///     real address for that client to connect back to - only a real
+    ///     Kestrel socket does.
     /// </summary>
     internal SimulatorFactory(Dictionary<string, string?>? settings = null, bool useRealServer = false)
     {
@@ -44,14 +44,6 @@ public class SimulatorFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("E2ETest");
-
-        // Deterministic baseline: no background sources unless a test opts in.
-        builder.UseSetting($"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}",
-            "false");
-        builder.UseSetting($"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}",
-            "false");
-        builder.UseSetting($"{OpenSkyOptions.SectionName}:{nameof(OpenSkyOptions.Enabled)}", "false");
-        builder.UseSetting($"{NwsOptions.SectionName}:{nameof(NwsOptions.Enabled)}", "false");
 
         foreach (var (key, value) in _settings) builder.UseSetting(key, value);
     }

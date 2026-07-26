@@ -3,9 +3,9 @@
 ## Design principles
 
 - **The proto model IS the model.** The generated `Rheinmetall.TacticalApi.V0` types are used everywhere — in the store, on the event bus, and in the data sources. There is deliberately no internal abstract domain model, because the point of the simulator is to exercise the interface contract itself.
-- **Sources are real gRPC clients, not a special case.** Every simulation source pushes its `UpdateSituationObject`/`DeleteSituationObject` batches through `ISituationIngest`, implemented by `GrpcSituationIngest` as a genuine `Situation.SituationClient` call against whatever endpoint `Simulator:Ingest:Address` points at (see [Configuration](CONFIGURATION.md)). By default that's the simulator's own native gRPC endpoint, so it works out of the box, but repointing that one setting drives the same sources against any other implementation of the TacticalAPI contract. Internally, the gRPC service (`SituationGrpcService`) applies incoming RPCs straight to the `SituationStore` - there's still exactly one store and one place writes are validated/merged, it's just reached over the wire now instead of through a shared C# interface.
+- **Server and adapters are separate executables.** `TacticalApi.Simulator.Host` is the simulated TacticalAPI service - store, `Situation` gRPC service, map UI - and nothing else; it has no simulation sources at all. Each data source lives in its own `TacticalApi.Simulator.Adapter.*` executable (`Adapter.OpenSky`, `Adapter.Nws`, `Adapter.Synthetic`) that pushes `UpdateSituationObject`/`DeleteSituationObject` batches through `ISituationIngest`, implemented by `GrpcSituationIngest` as a genuine `Situation.SituationClient` call against whatever endpoint `Simulator:Ingest:Address` points at (see [Configuration](CONFIGURATION.md)). By default that's the Host's own native gRPC endpoint, so running the Host plus any adapter "just works", but repointing that one setting per adapter drives it against any other implementation of the TacticalAPI contract instead - independently of the others, since each adapter is its own process with its own config. Internally, the Host's gRPC service (`SituationGrpcService`) applies incoming RPCs straight to the `SituationStore` - there's still exactly one store and one place writes are validated/merged, it's just reached over the wire now instead of through a shared C# interface. Every adapter's entire `Program.cs` is a single call to `AdapterHost.Run` (in Core) - a plain generic `Host`, no ASP.NET Core, no port ever bound, since an adapter has no web surface of its own.
 - **Runtime-only state.** `SituationStore` is a concurrent in-memory map. Restart = empty situation.
-- **Configuration via `IOptionsMonitor`.** All options are bound from `appsettings.json`, validated with data annotations at startup (`ValidateOnStart`), and hot-reloadable: source intervals, track counts, channel capacities etc. are re-read every cycle, so you can edit `appsettings.json` while the simulator runs.
+- **Configuration via `IOptionsMonitor`.** All options are bound from each executable's own `appsettings.json`, validated with data annotations at startup (`ValidateOnStart`), and hot-reloadable: source intervals, track counts, channel capacities etc. are re-read every cycle, so you can edit `appsettings.json` while a process runs.
 - **No security features** (per requirement): plain h2c (HTTP/2 without TLS), no authentication, no authorization.
 
 ## Solution layout
@@ -13,18 +13,21 @@
 ```
 src/
   TacticalApi.Simulator.Contracts     protoc/Grpc.Tools code generation (model + service stubs)
-  TacticalApi.Simulator.Core          store, merge logic, event broker, source abstraction, options
+  TacticalApi.Simulator.Core          store, merge logic, event broker, ingest client, AdapterHost, options
   TacticalApi.Simulator.Sources       shared track mapping: TrackReport, TrackUpdateFactory, TrackEmitterOptions
   TacticalApi.Simulator.Sources.OpenSky    live OpenSky Network flight tracker — see its README
   TacticalApi.Simulator.Sources.Synthetic  offline air-track + scenario sources — see its README
   TacticalApi.Simulator.Sources.Nws        live NWS weather alerts (text + symbol + sketch) — see its README
-  TacticalApi.Simulator.Host           ASP.NET Core gRPC host
+  TacticalApi.Simulator.Adapter.OpenSky    runs the OpenSky source as its own executable
+  TacticalApi.Simulator.Adapter.Synthetic  runs the synthetic sources as its own executable
+  TacticalApi.Simulator.Adapter.Nws        runs the NWS source as its own executable
+  TacticalApi.Simulator.Host           ASP.NET Core gRPC server (store + Situation service + map UI)
 tests/
-  TacticalApi.Simulator.Tests         xUnit tests for store, broker, mapping, sources
-  TacticalApi.Simulator.E2ETests      real host + real gRPC over an in-memory transport
+  TacticalApi.Simulator.Tests         xUnit tests for store, broker, mapping, sources, Core DI composition
+  TacticalApi.Simulator.E2ETests      real host + real adapters + real gRPC sockets
 ```
 
-Dependency direction: `Host → Sources.* → Core → Contracts`. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers).
+Dependency direction: `Host → Core → Contracts` and, separately, `Adapter.* → Sources.* → Core → Contracts` - the Host never references any `Sources.*` project, and no `Adapter.*` project references another. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers, and `RunWorkingDirectory` so `dotnet run --project <path>` finds that project's own `appsettings.json` regardless of the caller's working directory).
 
 Per-source implementation detail lives with the source, not here:
 

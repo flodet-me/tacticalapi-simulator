@@ -5,7 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
     <ProjectReference Include="..\..\src\TacticalApi.Simulator.Host\TacticalApi.Simulator.Host.csproj"/>
+    <ProjectReference Include="..\..\src\TacticalApi.Simulator.Sources.Synthetic\TacticalApi.Simulator.Sources.Synthetic.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
