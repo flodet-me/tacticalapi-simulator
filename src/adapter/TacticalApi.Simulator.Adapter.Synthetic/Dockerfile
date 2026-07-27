@@ -23,7 +23,8 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 ARG VERSION=0.1.0
 LABEL org.opencontainers.image.title="TacticalAPI Simulator Adapter - Synthetic" \
       org.opencontainers.image.description="Offline synthetic air-picture adapter for the Rheinmetall TacticalAPI gRPC interface" \
-      org.opencontainers.image.version="${VERSION}"
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/flodet-me/tacticalapi-simulator"
 
 WORKDIR /app
 COPY --from=build /app/publish .

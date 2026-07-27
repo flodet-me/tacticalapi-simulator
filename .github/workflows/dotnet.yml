@@ -297,6 +297,39 @@ jobs:
           --tag ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }}
           .
 
+      - name: Smoke-test container
+        # Only the Host actually listens on a port - the three adapters are
+        # plain outbound-push console apps with no HTTP surface to hit here.
+        # Runs on every build (PRs included), not just pushes to main - this
+        # is a build-correctness check, not a publish step.
+        if: matrix.name == 'host'
+        run: |
+          set -euo pipefail
+          container_id=$(docker run -d -p 4268:4268 ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }})
+          cleanup() { docker logs "$container_id" || true; docker rm -f "$container_id" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          echo "Waiting for the container's own HEALTHCHECK to report healthy..."
+          for i in $(seq 1 24); do
+            health="$(docker inspect --format='{{.State.Health.Status}}' "$container_id")"
+            if [ "$health" = "healthy" ]; then
+              echo "Healthy after ~$((i * 10))s."
+              break
+            fi
+            if [ "$health" = "unhealthy" ]; then
+              echo "::error::Container reported unhealthy."
+              exit 1
+            fi
+            if [ "$i" -eq 24 ]; then
+              echo "::error::Container never reported healthy within 240s."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "Confirming /healthz is reachable from outside the container too."
+          curl -sf http://localhost:4268/healthz
+
       - name: Log in to GHCR
         # Only push from main - never from a pull_request build (this
         # workflow's `push` trigger is already scoped to `branches: [ main ]`,

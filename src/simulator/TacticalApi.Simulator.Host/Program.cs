@@ -37,6 +37,8 @@ builder.Services.AddGrpcReflection();
 
 builder.Services.AddSituationServer();
 
+builder.Services.AddHealthChecks();
+
 var app = builder.Build();
 
 // gRPC-Web (HTTP/1.1) support so the official Rheinmetall test client - which
@@ -45,6 +47,7 @@ app.UseGrpcWeb(new GrpcWebOptions { DefaultEnabled = true });
 
 app.MapGrpcService<SituationGrpcService>().EnableGrpcWeb();
 app.MapGrpcReflectionService();
+app.MapHealthChecks("/healthz");
 app.MapGet("/", (SituationStore store,
     SituationEventBroker broker,
     IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
