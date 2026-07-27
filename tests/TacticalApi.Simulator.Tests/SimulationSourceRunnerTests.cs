@@ -116,7 +116,8 @@ public sealed class SimulationSourceRunnerTests
 
         // Assert: StopAsync completes (doesn't hang or throw) despite the
         // cancellation surfacing inside ProduceAsync.
-        await stopTask.WaitAsync(PollTimeout);
+        var exception = await Record.ExceptionAsync(() => stopTask.WaitAsync(PollTimeout));
+        Assert.Null(exception);
     }
 
     private static SimulationSourceRunner<FakeSource> CreateRunner(FakeSource source, ISituationIngest ingest)

@@ -29,7 +29,7 @@ public sealed class AdapterIntegrationE2ETests
         // Real Kestrel socket required: the adapter's gRPC client needs a real
         // address to dial into, unlike the in-memory TestServer transport the
         // rest of the E2E suite uses.
-        await using var serverFactory = new SimulatorFactory(useRealServer: true);
+        await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
         var client = serverFactory.CreateGrpcClient();
 
         var adapterBuilder = GenericHost.CreateApplicationBuilder();
@@ -76,7 +76,7 @@ public sealed class AdapterIntegrationE2ETests
     [Fact]
     public async Task ConvoyEscortAdapter_PopulatesRouteVehiclesAmbushAndSalute_EndToEnd()
     {
-        await using var serverFactory = new SimulatorFactory(useRealServer: true);
+        await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
         var client = serverFactory.CreateGrpcClient();
 
         var adapterBuilder = GenericHost.CreateApplicationBuilder();
@@ -133,7 +133,7 @@ public sealed class AdapterIntegrationE2ETests
     [Fact]
     public async Task CombatOutpostDefenseAdapter_PopulatesPerimeterOpsDefendTaskAndContact_EndToEnd()
     {
-        await using var serverFactory = new SimulatorFactory(useRealServer: true);
+        await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
         var client = serverFactory.CreateGrpcClient();
 
         var adapterBuilder = GenericHost.CreateApplicationBuilder();

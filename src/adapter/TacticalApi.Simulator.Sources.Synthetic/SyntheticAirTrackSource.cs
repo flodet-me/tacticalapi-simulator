@@ -35,7 +35,12 @@ public sealed class SyntheticAirTrackSource(
         var options1 = options.CurrentValue;
         var now = timeProvider.GetUtcNow();
         var elapsedSeconds = (now - _epoch).TotalSeconds;
+        // S2245: seeded on purpose for reproducible track positions given the same
+        // Seed - not a security context, so a cryptographic RNG (which can't be
+        // seeded this way) would defeat the point.
+#pragma warning disable S2245
         var random = new Random(options1.Seed);
+#pragma warning restore S2245
 
         var updates = new List<UpdateSituationObject>(options1.TrackCount);
         for (var i = 0; i < options1.TrackCount; i++)

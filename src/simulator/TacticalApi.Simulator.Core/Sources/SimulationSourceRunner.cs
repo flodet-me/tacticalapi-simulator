@@ -7,6 +7,18 @@ using TacticalApi.Simulator.Core.Logging;
 namespace TacticalApi.Simulator.Core.Sources;
 
 /// <summary>
+///     Non-generic constants shared by every closed <see cref="SimulationSourceRunner{TSource}" />.
+///     A <c>static readonly</c> field declared directly on the generic type would instead get its
+///     own separate storage per closed type (one per distinct <c>TSource</c>) - harmless for an
+///     immutable constant like this one, but exactly the kind of surprise a shared static on a
+///     generic type invites, so it lives here instead.
+/// </summary>
+internal static class SimulationSourceRunner
+{
+    internal static readonly TimeSpan DisabledPollInterval = TimeSpan.FromSeconds(5);
+}
+
+/// <summary>
 ///     Generic hosted service that drives a single <see cref="ISimulationSource" />:
 ///     produce -> ingest -> wait -> repeat. One runner per source keeps sources
 ///     isolated (a slow or failing source never stalls the others).
@@ -18,8 +30,6 @@ public sealed class SimulationSourceRunner<TSource>(
     : BackgroundService
     where TSource : ISimulationSource
 {
-    private static readonly TimeSpan DisabledPollInterval = TimeSpan.FromSeconds(5);
-
     private readonly TSource _source = source;
     private long _cycle;
 
@@ -41,7 +51,7 @@ public sealed class SimulationSourceRunner<TSource>(
                     _wasEnabled = false;
                 }
 
-                await Task.Delay(DisabledPollInterval, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(SimulationSourceRunner.DisabledPollInterval, stoppingToken).ConfigureAwait(false);
                 continue;
             }
 

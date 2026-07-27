@@ -30,4 +30,11 @@
          every Adapter.* - behaves the same way. -->
     <RunWorkingDirectory Condition="'$(RunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</RunWorkingDirectory>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same analyzer engine SonarLint/SonarQube use for C# - runs fully offline as a
+         Roslyn analyzer, no server or Java needed (unlike SonarLint's IDE plugin, see
+         .nix/shell.nix's jdk entry). Applied repo-wide here rather than per-project. -->
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all"/>
+  </ItemGroup>
 </Project>

@@ -142,7 +142,7 @@ public sealed class SyntheticScenarioSource(
 
     private sealed record ScenarioGeometry(
         RouteWaypoint[] PatrolWaypoints,
-        (double Lat, double Lon)[] ObjectiveArea,
+        (double Lat, double Lon)[] ObjectiveAreaPoints,
         (double Lat, double Lon) ObjectiveCentroid,
         (double Lat, double Lon) ForwardOperatingBase);
 
@@ -156,7 +156,12 @@ public sealed class SyntheticScenarioSource(
     {
         var dLat = o.ExtentKm / 2 / EarthRadiusKm * (180.0 / Math.PI);
         var dLon = dLat / Math.Cos(o.CenterLatitude * Math.PI / 180.0);
+        // S2245: seeded on purpose for a reproducible scenario layout given the
+        // same Seed - not a security context, so a cryptographic RNG (which can't
+        // be seeded this way) would defeat the point.
+#pragma warning disable S2245
         var jitter = new Random(o.Seed);
+#pragma warning restore S2245
 
         (string Name, string Comment, double DLatFactor, double DLonFactor)[] plan =
         [
@@ -320,7 +325,7 @@ public sealed class SyntheticScenarioSource(
     private static UpdateSituationObject ObjectiveArea(Identity reporter, Timestamp nowTs, ScenarioGeometry geo)
     {
         var polygon = new Polygon { LocationTime = nowTs, Name = "Objective HOTEL" };
-        foreach (var (lat, lon) in geo.ObjectiveArea) polygon.Points.Add(Geo(lat, lon));
+        foreach (var (lat, lon) in geo.ObjectiveAreaPoints) polygon.Points.Add(Geo(lat, lon));
 
         return new UpdateSituationObject
         {
@@ -644,7 +649,7 @@ public sealed class SyntheticScenarioSource(
         var sketch = new SketchLocation { LocationTime = nowTs, Name = "Approach sketch" };
 
         var objectivePolygon = new Polygon { Name = "Objective outline" };
-        foreach (var (lat, lon) in geo.ObjectiveArea) objectivePolygon.Points.Add(Geo(lat, lon));
+        foreach (var (lat, lon) in geo.ObjectiveAreaPoints) objectivePolygon.Points.Add(Geo(lat, lon));
         sketch.Elements.Add(new SketchLocationElement
         {
             Location = new SymbolLocation { Polygon = objectivePolygon },

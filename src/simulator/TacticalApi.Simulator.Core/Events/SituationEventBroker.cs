@@ -41,6 +41,10 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
     {
         if (_subscribers.IsEmpty) return;
 
+        // S3267 (suggests a LINQ .Where() here) doesn't fit: TryWrite is the write
+        // itself, not a side-effect-free predicate, so it can't be pulled into a
+        // filter without changing what the loop does.
+#pragma warning disable S3267
         foreach (var (_, channel) in _subscribers)
             foreach (var obj in changed)
                 // With DropOldest/DropWrite this never blocks; with Wait mode a
@@ -51,6 +55,7 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
                     var writeTask = channel.Writer.WriteAsync(obj);
                     if (!writeTask.IsCompletedSuccessfully) writeTask.AsTask().GetAwaiter().GetResult();
                 }
+#pragma warning restore S3267
     }
 
     private void Unsubscribe(Guid id)

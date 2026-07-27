@@ -15,8 +15,11 @@ public sealed class SymbolMergerTests
     [Fact]
     public void Merge_MergesForeignKeyByReportingSource()
     {
+        // S125 false positive: the two lines below are prose, not commented-out code.
+#pragma warning disable S125
         // Arrange: the update model carries one foreign key (identity + source);
         // the stored model keeps a dictionary keyed by that source (PropertyMerge.ForeignKey).
+#pragma warning restore S125
         var (reporter, time) = TestHelpers.Meta(T0);
         var merger = new SymbolMerger();
         var create = new UpdateSituationObject

@@ -51,8 +51,11 @@ public sealed class SituationEventBrokerTests
         // Arrange
         var broker = new SituationEventBroker(TestHelpers.Options());
 
-        // Act & Assert (no exception)
-        broker.Publish([new SituationObject()]);
+        // Act
+        var exception = Record.Exception(() => broker.Publish([new SituationObject()]));
+
+        // Assert
+        Assert.Null(exception);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TacticalApi.Simulator.Core.Logging;
 
 namespace TacticalApi.Simulator.Core;
 
@@ -21,6 +22,8 @@ public static class AdapterHost
         AppSettingsBootstrap.EnsureAppSettingsFile();
 
         var builder = Host.CreateApplicationBuilder(args);
+
+        builder.Logging.AddFileLogging(builder.Configuration);
 
         builder.Services.AddSituationIngestClient(builder.Configuration);
         configureSources(builder.Services, builder.Configuration);

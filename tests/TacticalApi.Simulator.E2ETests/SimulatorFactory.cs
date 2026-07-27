@@ -35,7 +35,7 @@ public class SimulatorFactory : WebApplicationFactory<Program>
     ///     real address for that client to connect back to - only a real
     ///     Kestrel socket does.
     /// </summary>
-    internal SimulatorFactory(Dictionary<string, string?>? settings = null, bool useRealServer = false)
+    internal SimulatorFactory(Dictionary<string, string?>? settings, bool useRealServer = false)
     {
         _settings = settings ?? new Dictionary<string, string?>();
         _useRealServer = useRealServer;

@@ -51,3 +51,21 @@ Each source's own settings (intervals, symbol codes, bounding boxes, ...) are do
 - [`Sources.OpenSky/README.md`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker (`Adapter.OpenSky`)
 - [`Sources.Synthetic/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario (`Adapter.Synthetic`)
 - [`Sources.Nws/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts (`Adapter.Nws`)
+
+## Logging (every executable)
+
+Every executable already logs structured events - every log call across the codebase goes through a source-generated `[LoggerMessage]` method with a named-parameter template (see each project's own `Logging/Log.cs`), not string interpolation, so arguments always reach every provider as distinct properties rather than text baked into one string. By default that only goes to the console.
+
+To also write it to a rolling file, set `Logging:File:Enabled` (a sibling of the standard `Logging:LogLevel` section, common to every `appsettings.json`):
+
+```jsonc
+"Logging": {
+  "LogLevel": { /* ... */ },
+  "File": {
+    "Enabled": false,     // opt-in; console alone is enough for local runs
+    "Path": "logs/host-.jsonl"   // rolls daily: "host-.jsonl" -> "host-20260415.jsonl"
+  }
+}
+```
+
+Written as newline-delimited JSON (`Serilog.Formatting.Json.JsonFormatter`), one object per log event with every `{NamedProperty}` from the call site kept as its own field - not flattened into the message text - so the file stays queryable by field (`jq`, a log aggregator, ...) instead of only grep-able by substring. `Logging:LogLevel` still controls the minimum level for this sink too, the same as it does for the console - there's no separate level config to keep in sync. Unlike the rest of this simulator's `IOptionsMonitor`-based config, this one setting isn't hot-reloadable: the log provider is wired into the host builder before the DI container exists, so toggling it requires a restart. Path is relative to the executable's own working directory (`RunWorkingDirectory` in `Directory.Build.props`, see [Architecture](ARCHITECTURE.md) - that's the project directory itself, not wherever `dotnet run` was invoked from), and `logs/` is gitignored.

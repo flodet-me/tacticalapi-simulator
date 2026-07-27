@@ -62,10 +62,10 @@ public sealed class CombatOutpostDefenseSource(
         var updates = new List<UpdateSituationObject>
         {
             Perimeter(reporter, nowTs, o),
-            DefendTask(reporter, nowTs, now, isNight)
+            DefendTask(reporter, nowTs, isNight)
         };
         for (var i = 0; i < _observationPosts.Length; i++)
-            updates.Add(ObservationPost(o, reporter, nowTs, i));
+            updates.Add(ObservationPost(o, i));
 
         var contactProbability = isNight ? o.DayContactProbability * o.NightContactProbabilityMultiplier : o.DayContactProbability;
         var cooldownElapsed = _contactCooldownUntil is null || now >= _contactCooldownUntil;
@@ -116,7 +116,12 @@ public sealed class CombatOutpostDefenseSource(
 
     private static (double Lat, double Lon)[] BuildPerimeter(CombatOutpostDefenseOptions o)
     {
+        // S2245: seeded on purpose for a reproducible perimeter layout given the
+        // same Seed - not a security context, so a cryptographic RNG (which can't
+        // be seeded this way) would defeat the point.
+#pragma warning disable S2245
         var jitter = new Random(o.Seed);
+#pragma warning restore S2245
         const int points = 8;
         var perimeter = new (double Lat, double Lon)[points];
         for (var i = 0; i < points; i++)
@@ -161,7 +166,7 @@ public sealed class CombatOutpostDefenseSource(
         };
     }
 
-    private UpdateSituationObject ObservationPost(CombatOutpostDefenseOptions o, Identity reporter, Timestamp nowTs, int index)
+    private UpdateSituationObject ObservationPost(CombatOutpostDefenseOptions o, int index)
     {
         var (lat, lon) = _observationPosts[index];
         var track = new TrackReport($"cop:op:{index}", $"OP {index + 1}", lat, lon, null, null, 0, "Manned observation post");
@@ -169,7 +174,7 @@ public sealed class CombatOutpostDefenseSource(
             track, o.ReporterId, "SFGPUCI--------", SymbolCatalog.Mil2525C, timeProvider.GetUtcNow(), TimeSpan.FromMinutes(2));
     }
 
-    private UpdateSituationObject DefendTask(Identity reporter, Timestamp nowTs, DateTimeOffset now, bool isNight)
+    private UpdateSituationObject DefendTask(Identity reporter, Timestamp nowTs, bool isNight)
     {
         var o = options.CurrentValue;
         return new UpdateSituationObject
@@ -224,8 +229,9 @@ public sealed class CombatOutpostDefenseSource(
         _garrisonEffective -= casualties;
 
         var id = $"cop:event:{Interlocked.Increment(ref _eventCounter):D5}";
+        var casualtySuffix = casualties == 1 ? "y" : "ies";
         var description = insideWire
-            ? $"Indirect fire impact inside the wire. {casualties} friendly casualt{(casualties == 1 ? "y" : "ies")}."
+            ? $"Indirect fire impact inside the wire. {casualties} friendly casualt{casualtySuffix}."
             : "Indirect fire impact outside the wire, no casualties.";
 
         var major = GeoMath.Destination(impactLat, impactLon, bearing, 25);

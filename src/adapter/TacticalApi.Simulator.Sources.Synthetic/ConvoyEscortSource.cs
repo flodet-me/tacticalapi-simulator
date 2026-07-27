@@ -83,7 +83,7 @@ public sealed class ConvoyEscortSource(
             var casualties = _casualtiesByVehicleIndex.GetValueOrDefault(i);
             var personnel = Math.Max(0, o.PersonnelPerVehicle - casualties);
 
-            updates.Add(ConvoyVehicle(o, reporter, nowTs, i, vehicleCount, position, course, personnel));
+            updates.Add(ConvoyVehicle(o, i, vehicleCount, position, course, personnel));
         }
 
         // --- Ambush probability check ---------------------------------------------------------
@@ -208,12 +208,17 @@ public sealed class ConvoyEscortSource(
     }
 
     private static UpdateSituationObject ConvoyVehicle(
-        ConvoyEscortOptions o, Identity reporter, Timestamp nowTs, int index, int vehicleCount,
+        ConvoyEscortOptions o, int index, int vehicleCount,
         (double Lat, double Lon) position, double course, int personnel)
     {
         var isLeadGunTruck = index == 0;
         var isRearGunTruck = index == vehicleCount - 1;
-        var role = isLeadGunTruck ? "GUNTRUCK 1 (lead)" : isRearGunTruck ? "GUNTRUCK 2 (trail)" : $"LOGPAC {index}";
+        var role = (isLeadGunTruck, isRearGunTruck) switch
+        {
+            (true, _) => "GUNTRUCK 1 (lead)",
+            (_, true) => "GUNTRUCK 2 (trail)",
+            _ => $"LOGPAC {index}"
+        };
 
         // Illustrative MIL-STD-2525C codes, friend affiliation: combat instillation for the
         // armed escort, sustainment for the cargo trucks - same scheme as the base scenario's

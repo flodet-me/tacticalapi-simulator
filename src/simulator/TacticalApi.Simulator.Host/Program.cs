@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using TacticalApi.Simulator.Core;
 using TacticalApi.Simulator.Core.Configuration;
 using TacticalApi.Simulator.Core.Events;
+using TacticalApi.Simulator.Core.Logging;
 using TacticalApi.Simulator.Core.Store;
 using TacticalApi.Simulator.Host.Services;
 using TacticalApi.Simulator.Host.Web;
@@ -9,6 +10,8 @@ using TacticalApi.Simulator.Host.Web;
 AppSettingsBootstrap.EnsureAppSettingsFile();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddFileLogging(builder.Configuration);
 
 // Options via IOptionsMonitor: bound, validated at startup, hot-reloadable
 // (appsettings.json changes are picked up without restarting the host).
@@ -79,7 +82,13 @@ app.MapGet("/api/config", (IOptionsMonitor<MapUiOptions> options) =>
     });
 });
 
-app.Run();
+await app.RunAsync();
 
 /// <summary>Exposed for E2E tests via WebApplicationFactory.</summary>
+// S1118: this is the standard ASP.NET Core marker-class pattern that lets
+// WebApplicationFactory<Program> reference a top-level-statement Program as a
+// generic type argument - it's never actually instantiated, only used via
+// reflection, so a static/protected-ctor class wouldn't serve the same purpose.
+#pragma warning disable S1118
 public partial class Program;
+#pragma warning restore S1118
