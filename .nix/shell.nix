@@ -12,7 +12,6 @@ pkgs.mkShell {
     pkgs.jq # Query JSON - API responses, appsettings.json, CycloneDX SBOM output
     pkgs.yq-go # Query/edit YAML - .github/workflows/dotnet.yml, action.yml files
     pkgs.python3 # Run the inline scripts dotnet.yml uses for the coverage gate and license allow-list checks
-    pkgs.jdk # SonarLint's C#/.NET analyzer runs on the JVM - IDE plugins (VS Code, JetBrains, VS) need a JDK on PATH to run analysis at all, connected mode or not
     pkgs.nixfmt # Formats/checks *.nix files (also the flake's `formatter`, and what `nix run .#editorconfig-check` calls); see docs/CI.md
     pkgs.editorconfig-checker # Checks every tracked file against .editorconfig (charset/EOL/trailing-whitespace/final-newline); see docs/CI.md
   ];
