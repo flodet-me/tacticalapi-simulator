@@ -45,5 +45,5 @@ Each adapter can just as easily point at a different, real TacticalAPI implement
 Per-source configuration and behavior (run via the matching `Adapter.*` project):
 
 - [`Sources.OpenSky`](src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker (`Adapter.OpenSky`)
-- [`Sources.Synthetic`](src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario (`Adapter.Synthetic`)
+- [`Sources.Synthetic`](src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and scripted military scenarios (base, convoy escort, combat outpost defense) (`Adapter.Synthetic`)
 - [`Sources.Nws`](src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts (text + location + warning-area sketch from one feed) (`Adapter.Nws`)

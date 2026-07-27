@@ -32,7 +32,7 @@ Dependency direction: `Host → Core → Contracts` and, separately, `Adapter.* 
 Per-source implementation detail lives with the source, not here:
 
 - [`Sources.OpenSky/README.md`](../src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
-- [`Sources.Synthetic/README.md`](../src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario
+- [`Sources.Synthetic/README.md`](../src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and scripted military scenarios (base, convoy escort, combat outpost defense)
 - [`Sources.Nws/README.md`](../src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts
 
 ## Interface semantics implemented

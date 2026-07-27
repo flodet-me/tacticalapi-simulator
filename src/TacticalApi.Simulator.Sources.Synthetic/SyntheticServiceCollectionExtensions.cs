@@ -22,6 +22,18 @@ public static class SyntheticServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSimulationSource<SyntheticScenarioSource>();
 
+        services.AddOptions<ConvoyEscortOptions>()
+            .Bind(configuration.GetSection(ConvoyEscortOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<ConvoyEscortSource>();
+
+        services.AddOptions<CombatOutpostDefenseOptions>()
+            .Bind(configuration.GetSection(CombatOutpostDefenseOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<CombatOutpostDefenseSource>();
+
         return services;
     }
 }

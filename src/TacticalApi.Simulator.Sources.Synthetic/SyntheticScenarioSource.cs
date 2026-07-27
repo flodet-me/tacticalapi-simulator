@@ -202,18 +202,7 @@ public sealed class SyntheticScenarioSource(
     /// <summary>Great-circle destination point, given a start point, bearing and distance.</summary>
     private static (double Lat, double Lon) Destination(double lat, double lon, double bearingDeg, double distanceM)
     {
-        var angularDistance = distanceM / (EarthRadiusKm * 1000.0);
-        var bearing = bearingDeg * Math.PI / 180.0;
-        var lat1 = lat * Math.PI / 180.0;
-        var lon1 = lon * Math.PI / 180.0;
-
-        var lat2 = Math.Asin(Math.Sin(lat1) * Math.Cos(angularDistance) +
-                              Math.Cos(lat1) * Math.Sin(angularDistance) * Math.Cos(bearing));
-        var lon2 = lon1 + Math.Atan2(
-            Math.Sin(bearing) * Math.Sin(angularDistance) * Math.Cos(lat1),
-            Math.Cos(angularDistance) - Math.Sin(lat1) * Math.Sin(lat2));
-
-        return (lat2 * 180.0 / Math.PI, lon2 * 180.0 / Math.PI);
+        return GeoMath.Destination(lat, lon, bearingDeg, distanceM);
     }
 
     private static GeoPoint Geo(double lat, double lon)

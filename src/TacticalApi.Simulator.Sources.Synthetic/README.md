@@ -1,7 +1,13 @@
 # TacticalApi.Simulator.Sources.Synthetic
 
-Two fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track picture,
-and a scripted mini scenario that exercises every situation object type in the TacticalAPI contract.
+Four fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
+picture, a scripted mini scenario that exercises every situation object type in the TacticalAPI contract, and two
+scenarios modeling real military operations end to end — a convoy escort and a combat outpost defense — with
+friendly/hostile forces and engagements resolved probabilistically rather than scripted.
+
+`GeoMath.cs` (destination-point projection, haversine distance, point-in-polygon containment) and
+`LanchesterModel.cs` (Lanchester's Square Law attrition) are shared by every scenario below that needs real-world
+geometry or engagement resolution.
 
 ## `SyntheticAirTrackSource`
 
@@ -80,3 +86,104 @@ the patrol symbol and incidents move/appear every cycle.
 | `ChatProbability`                    | `0.4`            | chance per cycle of a new SITREP `TextDocument`           |
 | `PatrolLapDuration`                  | `00:10:00`       | full loop time for the patrol symbol/task, range 1min–24h |
 | `ReporterId`                         | `SIM-SCENARIO`   |                                                           |
+
+## `ConvoyEscortSource`
+
+Config section: `Simulator:ConvoyEscort`, bound to `ConvoyEscortOptions`. **Disabled by default** — opt-in
+alongside the base scenario.
+
+### How it works
+
+A logistics convoy (callsign `TRIREME`: a lead and a trail gun truck escorting `CargoVehicleCount` trucks) shuttles
+back and forth along `Route CONDOR` between `StartLatitude/Longitude` and `EndLatitude/Longitude`, turning around
+every `TransitDuration` — replacement personnel are assumed between runs, so casualties don't accumulate forever.
+
+1. Three scripted high-risk zones sit at fixed fractions along the route (a culvert, a market chokepoint, a rail
+   underpass), each named in the route's `RouteLocation` waypoints. Ambush probability per cycle is
+   `BaseAmbushProbability`, multiplied by `RiskZoneMultiplier` while the lead vehicle is within `RiskZoneRadiusM` of
+   one — real ambush risk is not uniform along a route, it clusters at terrain choke points.
+2. On a triggered ambush (subject to `ContactCooldown`), a coin flip weighted by `IedProbabilityGivenContact` decides
+   IED-initiated (an `Ellipse` blast area) vs. pure small-arms contact (a `Fan` engagement arc from a nearby stand-off
+   position). A hostile element (3-8 dismounted fighters, MIL-STD-2525C hostile affiliation) is spawned and the
+   engagement is resolved with `LanchesterModel` — IED contact gives the ambusher a surprise-driven effectiveness
+   edge; pure small-arms contact favors the escort's training/firepower.
+3. Friendly casualties reduce that vehicle's carried personnel (reflected in its `AdditionalInformation`); if any
+   casualties resulted, a `CASEVAC request` `ActionTask` (`Priority1`) is raised at the contact point.
+4. Every cycle also refreshes a persistent `NatoMessageDocument` carrying the latest contact as a SALUTE-format report
+   (Size/Activity/Location/Unit/Time/Equipment) — a real US military spot-report format.
+
+### Configuration (`ConvoyEscortOptions`)
+
+| Setting                              | Default        | Notes                                                  |
+|---------------------------------------|----------------|--------------------------------------------------------|
+| `Enabled`                             | `false`        |                                                         |
+| `UpdateInterval`                      | `00:00:05`     | range 500ms–1h                                          |
+| `StartLatitude`/`StartLongitude`      | `52.92`/`8.55` | one end of the route                                    |
+| `EndLatitude`/`EndLongitude`          | `53.20`/`8.60` | the other end                                           |
+| `TransitDuration`                     | `00:20:00`     | one-way leg time, range 5min–24h                        |
+| `CargoVehicleCount`                   | `4`            | range 1–20                                              |
+| `SecurityVehicleCount`                | `2`            | range 1–8 (split lead/trail)                            |
+| `PersonnelPerVehicle`                 | `4`            | range 1–50                                              |
+| `BaseAmbushProbability`               | `0.01`         | per cycle, away from any risk zone                      |
+| `RiskZoneMultiplier`                  | `20.0`         | applied within a risk zone, range 1–200                 |
+| `RiskZoneRadiusM`                     | `300`          | range 50–5000                                           |
+| `IedProbabilityGivenContact`          | `0.5`          | chance an ambush is IED- vs. small-arms-initiated        |
+| `ContactCooldown`                     | `00:03:00`     | minimum time between contacts, range 30s–1h             |
+| `Seed`                                | `2024`         | deterministic risk-zone layout and contact rolls        |
+| `ReporterId`                          | `SIM-CONVOY`   |                                                         |
+
+## `CombatOutpostDefenseSource`
+
+Config section: `Simulator:CombatOutpostDefense`, bound to `CombatOutpostDefenseOptions`. **Disabled by
+default** — opt-in alongside the base scenario.
+
+### How it works
+
+A static combat outpost ("COP RESOLUTE": an octagonal defended perimeter with `ObservationPostCount` OPs around it)
+is probed by a persistent local hostile cell. Two things make this a simulation rather than scripted flavor:
+
+1. **The clock matters.** Contact probability is `DayContactProbability`, multiplied by
+   `NightContactProbabilityMultiplier` between `NightStartHourUtc` and `NightEndHourUtc` (checked against the actual
+   UTC hour) — real irregular/insurgent activity skews heavily toward darkness, and this reproduces that skew
+   directly instead of a flat random rate. The standing `Defend COP RESOLUTE` `ActionTask`'s priority (`Priority1` at
+   night, `Priority3` by day) reflects the same posture change.
+2. **Both sides have a memory.** Hostile cell strength and garrison strength are persistent pools (starting at
+   `InitialHostileCellStrength`/`GarrisonStrength`) that deplete with casualties and slowly reconstitute
+   (`HostileReinforcementPerHour`/`GarrisonReplacementPerHour`) — no infinite respawn, no instant recovery. Both
+   figures are visible in the `ActionTask`'s `AdditionalInformation`.
+
+Given a contact (subject to `ContactCooldown`), one of three real outcomes is rolled:
+
+- **Indirect fire** (`ArtilleryFire`, probability `IndirectFireProbabilityGivenContact`): a mortar-style `Ellipse`
+  impact lands at a random bearing/range from the center. `GeoMath.Contains` checks the impact against the actual
+  perimeter polygon — inside the wire risks a handful of casualties, outside the wire is a near-miss with none. This
+  is a real technique (impact-vs-perimeter containment), not a coin flip.
+- **Ground assault** (`Ambush`, probability `AssaultProbabilityGivenContact`): a larger hostile element (40-70% of
+  the cell) advances along a `Fan` axis; half the garrison stands-to. `LanchesterModel` resolves the engagement, and
+  3+ friendly casualties raise a `QRF reinforcement` `ActionTask`.
+- **Harassing/sniper fire** (`SniperAttack`, the remaining probability): a small element fires from stand-off (a
+  `Fan` arc) against the nearest OP's element; resolved the same way, defender-favored.
+
+A persistent `NatoMessageDocument` SITREP (posture + latest contact) refreshes every cycle.
+
+### Configuration (`CombatOutpostDefenseOptions`)
+
+| Setting                                | Default   | Notes                                                        |
+|------------------------------------------|-----------|----------------------------------------------------------------|
+| `Enabled`                                | `false`   |                                                                  |
+| `UpdateInterval`                         | `00:00:10`| range 500ms–1h                                                  |
+| `CenterLatitude`/`CenterLongitude`       | `53.00`/`9.05` | perimeter center                                           |
+| `PerimeterRadiusM`                       | `250`     | range 50–2000                                                   |
+| `ObservationPostCount`                   | `4`       | range 1–12                                                      |
+| `GarrisonStrength`                       | `40`      | starting/max personnel, range 1–500                             |
+| `InitialHostileCellStrength`             | `25`      | starting/max hostile strength, range 1–500                      |
+| `DayContactProbability`                  | `0.02`    | baseline, per cycle                                              |
+| `NightContactProbabilityMultiplier`      | `5.0`     | range 1–50                                                       |
+| `NightStartHourUtc`/`NightEndHourUtc`    | `19`/`6`  | UTC hours, wraps past midnight                                   |
+| `AssaultProbabilityGivenContact`         | `0.08`    | given a contact                                                  |
+| `IndirectFireProbabilityGivenContact`    | `0.4`     | given a non-assault contact                                      |
+| `HostileReinforcementPerHour`            | `0.6`     | strength regenerated per hour, range 0–50                        |
+| `GarrisonReplacementPerHour`             | `0.3`     | personnel replaced per hour, range 0–50                          |
+| `ContactCooldown`                        | `00:08:00`| minimum time between contacts, range 30s–4h                      |
+| `Seed`                                   | `4077`    | deterministic perimeter/OP layout and contact rolls              |
+| `ReporterId`                             | `SIM-COP` |                                                                  |
