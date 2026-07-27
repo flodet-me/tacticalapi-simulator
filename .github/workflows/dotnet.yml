@@ -153,11 +153,17 @@ jobs:
         run: |
           # Scoped to the Host, every Adapter.*, and their Sources.* dependencies
           # (excludes dev/test-only tooling) - what's actually in the Docker
-          # images, not the whole solution.
+          # images, not the whole solution. --exclude-dev drops packages the
+          # NuGet convention marks <developmentDependency>true</developmentDependency>
+          # (e.g. SonarAnalyzer.CSharp, Directory.Build.props - a build-time-only
+          # Roslyn analyzer, PrivateAssets="all", never published into the image);
+          # without it the license-allow-list step below fails on such a package's
+          # license even though nothing ships it.
           dotnet tool install --global CycloneDX --version 6.2.0
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet-CycloneDX TacticalApi.Simulator.slnx \
             --exclude-test-projects \
+            --exclude-dev \
             --set-version "${{ steps.version.outputs.full_version }}" \
             --output-format Json \
             --output .

@@ -29,6 +29,16 @@ of the box.
 7. There's no explicit "aircraft left the box" event — a track simply stops being reported and expires on its own once
    `TrackTimeToLive` elapses (the store's background sweeper then marks it deleted).
 
+### Resilience
+
+The named `HttpClient` (`OpenSkyServiceCollectionExtensions`) goes through
+[`AddStandardResilienceHandler`](https://www.nuget.org/packages/Microsoft.Extensions.Http.Resilience) instead of a
+bare timeout: retry with exponential backoff and jitter (honoring a `Retry-After` header, so a `429` from OpenSky's
+rate limit backs off correctly instead of hammering it again next attempt) plus a circuit breaker, so a transient
+failure or rate-limit response doesn't just fail `ProduceAsync` outright every single poll cycle. `HttpClient.Timeout`
+is left infinite - the resilience handler's own per-attempt/total timeouts (10s/30s by default) bound each call
+instead.
+
 ### Configuration (`OpenSkyOptions`)
 
 | Setting                         | Default                            | Notes                                                                       |

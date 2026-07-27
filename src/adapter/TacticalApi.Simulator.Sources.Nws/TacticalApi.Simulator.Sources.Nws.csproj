@@ -2,4 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TacticalApi.Simulator.Sources\TacticalApi.Simulator.Sources.csproj"/>
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience"/>
+  </ItemGroup>
 </Project>

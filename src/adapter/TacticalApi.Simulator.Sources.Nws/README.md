@@ -51,3 +51,12 @@ also emits non-track object types.
 
 The NWS API requires an identifying `User-Agent` header (no API key) — set once on the named `HttpClient` in
 `NwsServiceCollectionExtensions`, not per-request.
+
+### Resilience
+
+That same `HttpClient` also goes through
+[`AddStandardResilienceHandler`](https://www.nuget.org/packages/Microsoft.Extensions.Http.Resilience) instead of a
+bare timeout: retry with exponential backoff and jitter (honoring a `Retry-After` header) plus a circuit breaker, so a
+transient failure doesn't just fail `ProduceAsync` outright every single poll cycle. `HttpClient.Timeout` is left
+infinite - the resilience handler's own per-attempt/total timeouts (10s/30s by default) bound each call instead. See
+`Sources.OpenSky`'s README for the same setup in more detail.
