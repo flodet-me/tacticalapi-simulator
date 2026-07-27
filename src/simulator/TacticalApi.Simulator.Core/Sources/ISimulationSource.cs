@@ -7,7 +7,7 @@ namespace TacticalApi.Simulator.Core.Sources;
 ///     plain TacticalAPI update model (<see cref="UpdateSituationObject" />) - no
 ///     internal abstraction in between - and the runner pushes those via a real
 ///     gRPC call (<see cref="TacticalApi.Simulator.Core.Ingest.ISituationIngest" />) to whatever endpoint
-///     <c>Simulator:Ingest:Address</c> points at - the same RPC any external
+///     <c>Adapter:Ingest:Address</c> points at - the same RPC any external
 ///     client would use.
 ///     To add a new source (e.g. an AIS ship tracker):
 ///     1. Implement this interface.

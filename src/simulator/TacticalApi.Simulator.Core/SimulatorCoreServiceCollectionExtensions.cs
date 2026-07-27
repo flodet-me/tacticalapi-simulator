@@ -19,7 +19,7 @@ public static class SimulatorCoreServiceCollectionExtensions
     ///     Registers what every adapter executable needs: a
     ///     <see cref="TimeProvider" />, and the gRPC client sources submit writes
     ///     through (<see cref="GrpcIngestOptions" />, bound from
-    ///     "Simulator:Ingest"). See <see cref="AdapterHost.Run" />.
+    ///     "Adapter:Ingest"). See <see cref="AdapterHost.Run" />.
     /// </summary>
     public static IServiceCollection AddSituationIngestClient(
         this IServiceCollection services, IConfiguration configuration)

@@ -33,10 +33,10 @@ Performance-relevant behavior is configuration, not code: channel sizes, overflo
 
 ## Each adapter (`src/adapter/TacticalApi.Simulator.Adapter.*/appsettings.json`)
 
-Every `Adapter.*` executable's own `appsettings.json` has just two things: where it pushes updates to, and its own source's settings sitting directly under `Simulator` (no extra `Sources` nesting - that only ever mattered when every source's config lived together in one shared file, before the Host/adapter split; now each file already belongs to one adapter, so the source's own name is enough).
+Every `Adapter.*` executable's own `appsettings.json` has just two things: where it pushes updates to, and its own source's settings sitting directly under `Adapter` (no extra `Sources` nesting - that only ever mattered when every source's config lived together in one shared file, before the Host/adapter split; now each file already belongs to one adapter, so the source's own name is enough). `Adapter` is deliberately a separate root from the Host's own `Simulator` section above - an adapter isn't the simulator, it's a process that feeds one.
 
 ```jsonc
-"Simulator": {
+"Adapter": {
   "Ingest": {
     "Address": "http://localhost:5100"  // where this adapter pushes updates - see below
   },

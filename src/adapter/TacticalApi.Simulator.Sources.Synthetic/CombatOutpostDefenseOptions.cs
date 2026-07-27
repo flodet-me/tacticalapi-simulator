@@ -7,12 +7,12 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 ///     Options for the combat outpost defense scenario: a static defended perimeter probed by a
 ///     persistent hostile cell whose activity follows a day/night cycle (real insurgent/irregular
 ///     activity skews heavily toward darkness) rather than a flat random rate. Bound from
-///     "Simulator:CombatOutpostDefense" via IOptionsMonitor (hot-reloadable).
+///     "Adapter:CombatOutpostDefense" via IOptionsMonitor (hot-reloadable).
 /// </summary>
 public sealed class CombatOutpostDefenseOptions
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SectionName + ":CombatOutpostDefense";
+    public const string SectionName = AdapterOptions.SectionName + ":CombatOutpostDefense";
 
     /// <summary>Disabled by default - opt-in scenario alongside the base SyntheticScenario.</summary>
     public bool Enabled { get; set; }

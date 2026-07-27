@@ -5,7 +5,7 @@ namespace TacticalApi.Simulator.Sources.Nws;
 
 /// <summary>
 ///     Options for the US National Weather Service active-alerts source, bound
-///     from "Simulator:Nws". The NWS API is free and keyless but
+///     from "Adapter:Nws". The NWS API is free and keyless but
 ///     requires an identifying User-Agent header (set on the named HttpClient,
 ///     see NwsServiceCollectionExtensions) and is US-only, hence the state-code
 ///     <see cref="Area" /> filter rather than a bounding box.
@@ -16,7 +16,7 @@ public sealed class NwsOptions() : TrackEmitterOptions(
     TimeSpan.FromMinutes(15))
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SectionName + ":Nws";
+    public const string SectionName = AdapterOptions.SectionName + ":Nws";
 
     /// <summary>Disabled by default so the simulator runs fully offline out of the box.</summary>
     public bool Enabled { get; set; }

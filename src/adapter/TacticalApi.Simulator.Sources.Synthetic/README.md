@@ -12,7 +12,7 @@ geometry or engagement resolution.
 ## `SyntheticAirTrackSource`
 
 Registered via `AddSyntheticSources` (`SyntheticServiceCollectionExtensions.cs`). Config section:
-`Simulator:SyntheticAirTracks`, bound to `SyntheticAirTrackOptions`.
+`Adapter:SyntheticAirTracks`, bound to `SyntheticAirTrackOptions`.
 
 ### How it works
 
@@ -45,7 +45,7 @@ Simulates `TrackCount` aircraft flying circular orbits around a center point:
 
 ## `SyntheticScenarioSource`
 
-Config section: `Simulator:SyntheticScenario`, bound to `SyntheticScenarioOptions`. **Enabled by default** —
+Config section: `Adapter:SyntheticScenario`, bound to `SyntheticScenarioOptions`. **Enabled by default** —
 this is what populates the simulator out of the box.
 
 ### How it works
@@ -89,7 +89,7 @@ the patrol symbol and incidents move/appear every cycle.
 
 ## `ConvoyEscortSource`
 
-Config section: `Simulator:ConvoyEscort`, bound to `ConvoyEscortOptions`. **Disabled by default** — opt-in
+Config section: `Adapter:ConvoyEscort`, bound to `ConvoyEscortOptions`. **Disabled by default** — opt-in
 alongside the base scenario.
 
 ### How it works
@@ -134,7 +134,7 @@ every `TransitDuration` — replacement personnel are assumed between runs, so c
 
 ## `CombatOutpostDefenseSource`
 
-Config section: `Simulator:CombatOutpostDefense`, bound to `CombatOutpostDefenseOptions`. **Disabled by
+Config section: `Adapter:CombatOutpostDefense`, bound to `CombatOutpostDefenseOptions`. **Disabled by
 default** — opt-in alongside the base scenario.
 
 ### How it works

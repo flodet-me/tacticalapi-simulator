@@ -8,7 +8,7 @@ source that isn't just a track feed.
 
 ## `NwsAlertSource`
 
-Registered via `AddNwsSources` (`NwsServiceCollectionExtensions.cs`). Config section: `Simulator:Nws`, bound to
+Registered via `AddNwsSources` (`NwsServiceCollectionExtensions.cs`). Config section: `Adapter:Nws`, bound to
 `NwsOptions`. **Disabled by default**, and US-only (the NWS API has no international coverage).
 
 ### How it works

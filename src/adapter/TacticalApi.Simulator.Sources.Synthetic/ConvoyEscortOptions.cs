@@ -6,13 +6,13 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// <summary>
 ///     Options for the convoy escort scenario: a logistics convoy shuttling back and forth along
 ///     a supply route through scripted high-risk zones (a culvert, a market chokepoint, ...)
-///     where ambush probability is elevated. Bound from "Simulator:ConvoyEscort" via
+///     where ambush probability is elevated. Bound from "Adapter:ConvoyEscort" via
 ///     IOptionsMonitor (hot-reloadable).
 /// </summary>
 public sealed class ConvoyEscortOptions
 {
     /// <summary>Configuration section name this options type binds to.</summary>
-    public const string SectionName = SimulatorOptions.SectionName + ":ConvoyEscort";
+    public const string SectionName = AdapterOptions.SectionName + ":ConvoyEscort";
 
     /// <summary>Disabled by default - opt-in scenario alongside the base SyntheticScenario.</summary>
     public bool Enabled { get; set; }

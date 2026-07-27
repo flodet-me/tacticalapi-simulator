@@ -51,8 +51,8 @@ using TacticalApi.Simulator.Sources.Ais;
 AdapterHost.Run(args, (services, configuration) => services.AddAisSources(configuration));
 ```
 
-Plus its own `appsettings.json` with `Simulator:Ingest:Address` (defaults to the Host's own endpoint)
-and `Simulator:Ais`, included both as `Content` (so it's copied next to the built executable) and as
+Plus its own `appsettings.json` with `Adapter:Ingest:Address` (defaults to the Host's own endpoint)
+and `Adapter:Ais`, included both as `Content` (so it's copied next to the built executable) and as
 `<EmbeddedResource Include="appsettings.json"/>` (so `AppSettingsBootstrap` can regenerate it from that
 exact file if it's ever missing at runtime - see [Configuration](CONFIGURATION.md)). See
 [`Adapter.OpenSky`](../src/adapter/TacticalApi.Simulator.Adapter.OpenSky) for a working example of this exact

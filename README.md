@@ -4,7 +4,7 @@ A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tac
 
 The Host (`TacticalApi.Simulator.Host`) implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process. It has no data sources of its own.
 
-Simulated data sources (a synthetic air picture, a live [OpenSky Network](https://opensky-network.org/) flight tracker, and live [US National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts) each run as their own adapter executable (`TacticalApi.Simulator.Adapter.Synthetic`/`.OpenSky`/`.Nws`), feeding the situation using the unmodified TacticalAPI data model, pushed over a real gRPC client (`Situation.SituationClient`). Each adapter can drive any other implementation of the TacticalAPI contract, independently of the others, by repointing its own `Simulator:Ingest:Address` (see [Configuration](docs/CONFIGURATION.md)) at it instead.
+Simulated data sources (a synthetic air picture, a live [OpenSky Network](https://opensky-network.org/) flight tracker, and live [US National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts) each run as their own adapter executable (`TacticalApi.Simulator.Adapter.Synthetic`/`.OpenSky`/`.Nws`), feeding the situation using the unmodified TacticalAPI data model, pushed over a real gRPC client (`Situation.SituationClient`). Each adapter can drive any other implementation of the TacticalAPI contract, independently of the others, by repointing its own `Adapter:Ingest:Address` (see [Configuration](docs/CONFIGURATION.md)) at it instead.
 
 ## Running
 
@@ -34,7 +34,7 @@ grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.Situation/Subscrib
 
 With `Adapter.Synthetic` running alongside the Host, its scenario source (see [`Sources.Synthetic`'s README](src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md), enabled by default) immediately populates the situation; the subscribe stream shows it updating every 5 seconds. `Adapter.OpenSky` and `Adapter.Nws` are disabled by default (see each source's own README) since they call live external APIs.
 
-Each adapter can just as easily point at a different, real TacticalAPI implementation instead of this Host - set that adapter's own `Simulator:Ingest:Address` (e.g. `Simulator__Ingest__Address=http://some-other-host:5100`). See [Configuration](docs/CONFIGURATION.md).
+Each adapter can just as easily point at a different, real TacticalAPI implementation instead of this Host - set that adapter's own `Adapter:Ingest:Address` (e.g. `Adapter__Ingest__Address=http://some-other-host:5100`). See [Configuration](docs/CONFIGURATION.md).
 
 ## Documentation
 
