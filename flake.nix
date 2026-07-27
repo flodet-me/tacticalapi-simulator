@@ -27,6 +27,7 @@
         apps = {
           format = import ./.nix/format.nix { inherit pkgs dotnet-sdk; };
           ci-local = import ./.nix/ci-local.nix { inherit pkgs; };
+          editorconfig-check = import ./.nix/editorconfig-check.nix { inherit pkgs; };
         };
 
         # `nix fmt` formats this repo's own *.nix files (not the C# solution -

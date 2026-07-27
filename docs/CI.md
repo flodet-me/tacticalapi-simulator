@@ -11,6 +11,20 @@ A third job, `contract-drift-check`, only runs on the weekly schedule (or manual
 
 The .NET SDK install + NuGet cache steps are factored into a shared composite action (`.github/actions/setup-build-env`).
 
+## Formatting: three checks, one source of truth
+
+`.editorconfig` is the single source of truth for whitespace/charset conventions across every file in the repo, not just `*.cs` - but no single tool both understands every one of those file types *and* applies its formatting rules correctly, so `build-and-test` runs three separate formatting steps instead:
+
+1. **`dotnet format --verify-no-changes`** - C# style (`csharp_style_*` in `.editorconfig`) plus whitespace, syntax-aware.
+2. **`nixfmt --check`** over every `*.nix` file - syntax-aware Nix formatting. Pinned to the same nixfmt version (`v1.2.0`) that `.nix/shell.nix`'s nixpkgs input resolves today, verified against a hardcoded sha256, downloaded as [NixOS/nixfmt](https://github.com/NixOS/nixfmt)'s standalone static release binary rather than via Nix itself - this workflow otherwise needs no Nix install at all (see [docs/NIX.md](NIX.md)). Keep that pin and this one in sync if `nixpkgs` moves to a newer nixfmt.
+3. **[editorconfig-checker](https://editorconfig-checker.github.io/)** over every tracked file - charset, line endings, trailing whitespace, and final-newline, checked against whatever `.editorconfig` section matches each file. Downloaded the same way as nixfmt (pinned version `3.8.0` - the version `nix run .#editorconfig-check`'s locked nixpkgs input resolves today - sha256-verified release tarball, no Nix needed).
+
+`nix run .#format` applies all three sets of fixes locally in one command (`dotnet format .`, then `nixfmt` on every `*.nix` file, then the same charset/EOL/trailing-whitespace/final-newline fixes on every other tracked text file - skipping binaries the same way `git grep -I` does). `nix run .#editorconfig-check` is its read-only counterpart (`nixfmt --check` + `editorconfig-checker`, mirroring steps 2-3 above; step 1 is still just `dotnet format --verify-no-changes`).
+
+editorconfig-checker's own **Indentation and IndentSize checks are disabled** (`.editorconfig-checker.json`) repo-wide, on all three tools' checks combined coverage rather than relying on this one for the two languages that already have (1) and (2) above: that checker only verifies that each line's leading whitespace is a multiple of `indent_size` - it has no concept of a Markdown fenced code block's own embedded-language indentation (this repo's directory-tree diagrams in `docs/ARCHITECTURE.md` are one example) or a hanging/aligned continuation line in C# or a Dockerfile `LABEL ... \` continuation (both present in this repo too) - all three are valid, common formatting that isn't a multiple of any fixed `indent_size`. Enabling it produced dozens of false positives against exactly those three patterns when first tried; the two checks it can't get right for this repo's file mix are turned off, and indentation correctness for `.cs`/`.nix` is left to tools (1) and (2) that actually parse the language. `.editorconfig`'s `indent_size` declarations still stand for every file type - editors (VS Code, JetBrains, etc.) read them directly for auto-indent-on-newline regardless of whether this checker verifies them.
+
+Adding a new file type: add (or adjust) its `.editorconfig` section first - that's what both editorconfig-checker and every editor read - then only add a fourth CI step if the new type needs its own syntax-aware formatter the way C# and Nix do.
+
 ## Supply chain checks: SBOM, licenses, vulnerabilities
 
 Within `build-and-test`:

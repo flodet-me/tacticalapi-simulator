@@ -17,11 +17,16 @@ Drops you into a shell with everything `.nix/shell.nix` lists on `PATH`: the pin
 ## Apps
 
 ```bash
-nix run .#format      # dotnet format . - applies fixes across the whole solution (not --verify-no-changes;
-                       # that's what CI's "Check formatting" step runs instead, see docs/CI.md)
+nix run .#format      # applies formatting fixes across the whole repo in one shot: dotnet format for *.cs,
+                       # nixfmt for *.nix, and charset/line-ending/trailing-whitespace/final-newline fixes for
+                       # every other tracked file (not --verify-no-changes; that's what CI's three formatting
+                       # steps and `nix run .#editorconfig-check` run instead, see docs/CI.md)
 
 nix run .#ci-local     # runs .github/workflows/dotnet.yml locally via act (needs Docker running); see docs/CI.md
                        # for what it covers, its caveats, and passing extra `act` flags after `--`
+
+nix run .#editorconfig-check   # nixfmt --check on every *.nix file, then editorconfig-checker on every tracked
+                                # file - the same two checks CI's "Check formatting" steps run; see docs/CI.md
 ```
 
 ## `nix fmt`

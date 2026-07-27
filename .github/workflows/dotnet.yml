@@ -50,8 +50,37 @@ jobs:
       - name: Restore
         run: dotnet restore
 
-      - name: Check formatting
+      - name: Check formatting (C#)
         run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      - name: Check formatting (*.nix)
+        run: |
+          set -euo pipefail
+          # Pinned to the same nixfmt version .nix/shell.nix's nixpkgs input
+          # resolves today, so this step and a contributor's local `nix fmt`
+          # agree - see docs/CI.md. Not run via Nix itself: this workflow
+          # otherwise needs no Nix install (see docs/NIX.md), so this fetches
+          # NixOS/nixfmt's standalone static binary release instead.
+          curl -sL -o nixfmt "https://github.com/NixOS/nixfmt/releases/download/v1.2.0/nixfmt"
+          echo "aa43e06e2e98d07f9393a8dc73978e0df79bad15d7f84fcd838e15557eb056ee  nixfmt" | sha256sum -c -
+          chmod +x nixfmt
+          ./nixfmt --check $(git ls-files '*.nix')
+
+      - name: Check formatting (all tracked files vs .editorconfig)
+        run: |
+          set -euo pipefail
+          # editorconfig-checker enforces charset/EOL/trailing-whitespace/final-newline
+          # for every tracked file, not just the C# .cs formats dotnet format covers
+          # above. Its Indentation/IndentSize checks are disabled repo-wide (see
+          # .editorconfig-checker.json) - that naive check flags markdown code-fence
+          # content and aligned multi-line C#/Dockerfile continuations as violations
+          # even though they're valid, so real indentation correctness for .cs and
+          # .nix is left to dotnet format and nixfmt above instead. See docs/CI.md.
+          EC_VERSION=3.8.0
+          curl -sL -o ec.tar.gz "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${EC_VERSION}/ec-linux-amd64.tar.gz"
+          echo "613bd88f34165a334adcb6b7e92a123c9de0eada65846d31af63613b779ff3be  ec.tar.gz" | sha256sum -c -
+          tar -xzf ec.tar.gz bin/ec-linux-amd64
+          ./bin/ec-linux-amd64
 
       - name: Scan for vulnerable NuGet packages
         run: |

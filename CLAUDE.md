@@ -30,6 +30,9 @@ dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 # Format check (CI fails the build on this, not just style-suggests)
 dotnet format --verify-no-changes --verbosity diagnostic
 
+# Format check for every other tracked file against .editorconfig (nixfmt + editorconfig-checker; see docs/CI.md)
+nix run .#editorconfig-check
+
 # Run the whole GitHub Actions workflow locally (see docs/CI.md for caveats)
 nix run .#ci-local
 ```
