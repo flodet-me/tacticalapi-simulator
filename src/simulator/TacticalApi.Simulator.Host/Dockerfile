@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Build from the REPO ROOT: docker build -f src/TacticalApi.Simulator.Adapter.Nws/Dockerfile .
+# Build from the REPO ROOT: docker build -f src/simulator/TacticalApi.Simulator.Host/Dockerfile .
 # (the build context has to be the repo root - this project needs
 # Directory.Build.props/Directory.Packages.props/global.json and the whole
 # src/ tree for its project references, not just its own directory.)
@@ -13,19 +13,20 @@ COPY Directory.Build.props Directory.Packages.props global.json ./
 COPY external/tacticalapi/rheinmetall external/tacticalapi/rheinmetall
 COPY src/ src/
 
-RUN dotnet publish src/TacticalApi.Simulator.Adapter.Nws --configuration Release \
+RUN dotnet publish src/simulator/TacticalApi.Simulator.Host --configuration Release \
     -p:Version=${VERSION} \
     --output /app/publish
 
-# Plain console app - no ASP.NET Core, no port ever bound - so the smaller
-# runtime image is enough, unlike the Host's aspnet one.
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 ARG VERSION=0.1.0
-LABEL org.opencontainers.image.title="TacticalAPI Simulator Adapter - NWS" \
-      org.opencontainers.image.description="US National Weather Service alerts adapter for the Rheinmetall TacticalAPI gRPC interface" \
+LABEL org.opencontainers.image.title="TacticalAPI Simulator" \
+      org.opencontainers.image.description="Simulator for the Rheinmetall TacticalAPI gRPC interface" \
       org.opencontainers.image.version="${VERSION}"
 
 WORKDIR /app
 COPY --from=build /app/publish .
 
-ENTRYPOINT ["dotnet", "TacticalApi.Simulator.Adapter.Nws.dll"]
+# gRPC-Web (HTTP/1.1) and native gRPC (h2c) endpoints, see appsettings.json.
+EXPOSE 4268 5100
+
+ENTRYPOINT ["dotnet", "TacticalApi.Simulator.Host.dll"]

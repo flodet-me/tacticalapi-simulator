@@ -8,6 +8,11 @@ pkgs.mkShell {
     pkgs.zlib
     pkgs.act # Run .github/workflows/dotnet.yml locally (needs Docker); see docs/CI.md
     pkgs.grpcurl # Poke the running host's reflection-enabled gRPC endpoint; see README.md
+    pkgs.tshark # Inspect gRPC/gRPC-Web wire traffic (HTTP/2 h2c, HTTP/1.1) between adapters and Host
+    pkgs.jq # Query JSON - API responses, appsettings.json, CycloneDX SBOM output
+    pkgs.yq-go # Query/edit YAML - .github/workflows/dotnet.yml, action.yml files
+    pkgs.python3 # Run the inline scripts dotnet.yml uses for the coverage gate and license allow-list checks
+    pkgs.jdk # SonarLint's C#/.NET analyzer runs on the JVM - IDE plugins (VS Code, JetBrains, VS) need a JDK on PATH to run analysis at all, connected mode or not
   ];
 
   # Set environment variables for .NET

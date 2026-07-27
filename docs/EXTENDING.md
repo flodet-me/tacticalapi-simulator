@@ -2,7 +2,7 @@
 
 ## Adding your own data source (e.g. an AIS ship tracker)
 
-[`Sources.OpenSky`](../src/TacticalApi.Simulator.Sources.OpenSky/README.md) is a working example of exactly this pattern (a live, HTTP-polling, single-object-type source) — read its README alongside this section. If your API naturally produces more than one kind of situation object (text, a location, a warning area, ...) from a single feed, [`Sources.Nws`](../src/TacticalApi.Simulator.Sources.Nws/README.md) is the example to look at instead — `ProduceAsync` just returns a mixed batch of `UpdateSituationObject`s built by hand alongside `TrackUpdateFactory.CreateSymbolUpdate(...)`, there's no special multi-type mechanism required.
+[`Sources.OpenSky`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) is a working example of exactly this pattern (a live, HTTP-polling, single-object-type source) — read its README alongside this section. If your API naturally produces more than one kind of situation object (text, a location, a warning area, ...) from a single feed, [`Sources.Nws`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) is the example to look at instead — `ProduceAsync` just returns a mixed batch of `UpdateSituationObject`s built by hand alongside `TrackUpdateFactory.CreateSymbolUpdate(...)`, there's no special multi-type mechanism required.
 
 1. Implement `ISimulationSource` — fetch your data and map it to `UpdateSituationObject`. For track-like data, `TrackReport` + `TrackUpdateFactory.CreateSymbolUpdate(...)` does the TacticalAPI mapping for you:
 
@@ -38,9 +38,11 @@ public static IServiceCollection AddAisSources(this IServiceCollection services,
 }
 ```
 
-3. Give it its own adapter executable — a new `TacticalApi.Simulator.Adapter.Ais` project (plain
-   `Microsoft.NET.Sdk`, `<OutputType>Exe</OutputType>`), referencing only `Core` and your new
-   `Sources.Ais` project. Its entire `Program.cs`:
+3. Give it its own adapter executable — a new `TacticalApi.Simulator.Adapter.Ais` project under
+   `src/adapter/` (plain `Microsoft.NET.Sdk`, `<OutputType>Exe</OutputType>`), referencing only `Core`
+   (`..\..\simulator\TacticalApi.Simulator.Core\...` - `Core` lives under `src/simulator/`, not
+   `src/adapter/`) and your new `Sources.Ais` project (a sibling under `src/adapter/`). Its entire
+   `Program.cs`:
 
 ```csharp
 using TacticalApi.Simulator.Core;
@@ -53,7 +55,7 @@ Plus its own `appsettings.json` with `Simulator:Ingest:Address` (defaults to the
 and `Simulator:Ais`, included both as `Content` (so it's copied next to the built executable) and as
 `<EmbeddedResource Include="appsettings.json"/>` (so `AppSettingsBootstrap` can regenerate it from that
 exact file if it's ever missing at runtime - see [Configuration](CONFIGURATION.md)). See
-[`Adapter.OpenSky`](../src/TacticalApi.Simulator.Adapter.OpenSky) for a working example of this exact
+[`Adapter.OpenSky`](../src/adapter/TacticalApi.Simulator.Adapter.OpenSky) for a working example of this exact
 shape, and add the new project to `TacticalApi.Simulator.slnx`.
 
 Each source gets its own `SimulationSourceRunner` background service (so a slow or failing source

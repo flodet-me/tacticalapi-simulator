@@ -1,15 +1,15 @@
 <Solution>
     <Folder Name="/src/">
-        <Project Path="src/TacticalApi.Simulator.Adapter.Nws/TacticalApi.Simulator.Adapter.Nws.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Adapter.OpenSky/TacticalApi.Simulator.Adapter.OpenSky.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Adapter.Synthetic/TacticalApi.Simulator.Adapter.Synthetic.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Contracts/TacticalApi.Simulator.Contracts.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Sources.Nws/TacticalApi.Simulator.Sources.Nws.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj"/>
-        <Project Path="src/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj"/>
+        <Project Path="src/simulator/TacticalApi.Simulator.Contracts/TacticalApi.Simulator.Contracts.csproj"/>
+        <Project Path="src/simulator/TacticalApi.Simulator.Core/TacticalApi.Simulator.Core.csproj"/>
+        <Project Path="src/simulator/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Adapter.Nws/TacticalApi.Simulator.Adapter.Nws.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Adapter.OpenSky/TacticalApi.Simulator.Adapter.OpenSky.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Adapter.Synthetic/TacticalApi.Simulator.Adapter.Synthetic.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Sources.Nws/TacticalApi.Simulator.Sources.Nws.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Sources.OpenSky/TacticalApi.Simulator.Sources.OpenSky.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Sources.Synthetic/TacticalApi.Simulator.Sources.Synthetic.csproj"/>
+        <Project Path="src/adapter/TacticalApi.Simulator.Sources/TacticalApi.Simulator.Sources.csproj"/>
     </Folder>
     <Folder Name="/tests/">
         <Project Path="tests/TacticalApi.Simulator.E2ETests/TacticalApi.Simulator.E2ETests.csproj"/>

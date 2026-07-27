@@ -55,7 +55,9 @@ public sealed class ConvoyEscortSourceTests
         // Arrange: probability 1 makes the ambush roll deterministic regardless of seed.
         var options = new ConvoyEscortOptions
         {
-            BaseAmbushProbability = 1, RiskZoneMultiplier = 1, PersonnelPerVehicle = 4
+            BaseAmbushProbability = 1,
+            RiskZoneMultiplier = 1,
+            PersonnelPerVehicle = 4
         };
         var source = CreateSource(options);
 

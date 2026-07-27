@@ -70,7 +70,7 @@ jobs:
         run: |
           # Directory.Build.props is the single source of truth for the base
           # version; CI only appends the run number + commit sha.
-          version_prefix=$(dotnet msbuild src/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj -getProperty:VersionPrefix)
+          version_prefix=$(dotnet msbuild src/simulator/TacticalApi.Simulator.Host/TacticalApi.Simulator.Host.csproj -getProperty:VersionPrefix)
           short_sha="${GITHUB_SHA::7}"
           version_suffix="ci.${{ github.run_number }}+${short_sha}"
           artifact_suffix="${{ github.run_number }}-${short_sha}"
@@ -178,16 +178,16 @@ jobs:
           EOF
 
       - name: Publish host
-        run: dotnet publish src/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish/host
+        run: dotnet publish src/simulator/TacticalApi.Simulator.Host --configuration Release --no-build --output ./publish/host
 
       - name: Publish adapter (OpenSky)
-        run: dotnet publish src/TacticalApi.Simulator.Adapter.OpenSky --configuration Release --no-build --output ./publish/adapter-opensky
+        run: dotnet publish src/adapter/TacticalApi.Simulator.Adapter.OpenSky --configuration Release --no-build --output ./publish/adapter-opensky
 
       - name: Publish adapter (NWS)
-        run: dotnet publish src/TacticalApi.Simulator.Adapter.Nws --configuration Release --no-build --output ./publish/adapter-nws
+        run: dotnet publish src/adapter/TacticalApi.Simulator.Adapter.Nws --configuration Release --no-build --output ./publish/adapter-nws
 
       - name: Publish adapter (Synthetic)
-        run: dotnet publish src/TacticalApi.Simulator.Adapter.Synthetic --configuration Release --no-build --output ./publish/adapter-synthetic
+        run: dotnet publish src/adapter/TacticalApi.Simulator.Adapter.Synthetic --configuration Release --no-build --output ./publish/adapter-synthetic
 
       - name: Upload host artifact
         uses: actions/upload-artifact@v7
@@ -229,16 +229,16 @@ jobs:
       matrix:
         include:
           - name: host
-            dockerfile: src/TacticalApi.Simulator.Host/Dockerfile
+            dockerfile: src/simulator/TacticalApi.Simulator.Host/Dockerfile
             image: tacticalapi-simulator
           - name: adapter-opensky
-            dockerfile: src/TacticalApi.Simulator.Adapter.OpenSky/Dockerfile
+            dockerfile: src/adapter/TacticalApi.Simulator.Adapter.OpenSky/Dockerfile
             image: tacticalapi-simulator-adapter-opensky
           - name: adapter-nws
-            dockerfile: src/TacticalApi.Simulator.Adapter.Nws/Dockerfile
+            dockerfile: src/adapter/TacticalApi.Simulator.Adapter.Nws/Dockerfile
             image: tacticalapi-simulator-adapter-nws
           - name: adapter-synthetic
-            dockerfile: src/TacticalApi.Simulator.Adapter.Synthetic/Dockerfile
+            dockerfile: src/adapter/TacticalApi.Simulator.Adapter.Synthetic/Dockerfile
             image: tacticalapi-simulator-adapter-synthetic
     steps:
       - name: Checkout (including TacticalAPI submodule)

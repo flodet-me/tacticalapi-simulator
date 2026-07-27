@@ -63,7 +63,8 @@ public sealed class CombatOutpostDefenseSourceTests
         // Arrange: probability-1 thresholds make the branch selection deterministic regardless of seed.
         var options = new CombatOutpostDefenseOptions
         {
-            DayContactProbability = 1, NightContactProbabilityMultiplier = 1,
+            DayContactProbability = 1,
+            NightContactProbabilityMultiplier = 1,
             AssaultProbabilityGivenContact = 1
         };
         var source = CreateSource(options);
@@ -83,8 +84,10 @@ public sealed class CombatOutpostDefenseSourceTests
         // Arrange
         var options = new CombatOutpostDefenseOptions
         {
-            DayContactProbability = 1, NightContactProbabilityMultiplier = 1,
-            AssaultProbabilityGivenContact = 0, IndirectFireProbabilityGivenContact = 1
+            DayContactProbability = 1,
+            NightContactProbabilityMultiplier = 1,
+            AssaultProbabilityGivenContact = 0,
+            IndirectFireProbabilityGivenContact = 1
         };
         var source = CreateSource(options);
 
@@ -104,8 +107,10 @@ public sealed class CombatOutpostDefenseSourceTests
         // Arrange
         var options = new CombatOutpostDefenseOptions
         {
-            DayContactProbability = 1, NightContactProbabilityMultiplier = 1,
-            AssaultProbabilityGivenContact = 0, IndirectFireProbabilityGivenContact = 0
+            DayContactProbability = 1,
+            NightContactProbabilityMultiplier = 1,
+            AssaultProbabilityGivenContact = 0,
+            IndirectFireProbabilityGivenContact = 0
         };
         var source = CreateSource(options);
 

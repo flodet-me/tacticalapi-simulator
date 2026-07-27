@@ -12,28 +12,32 @@
 
 ```
 src/
-  TacticalApi.Simulator.Contracts     protoc/Grpc.Tools code generation (model + service stubs)
-  TacticalApi.Simulator.Core          store, merge logic, event broker, ingest client, AdapterHost, options
-  TacticalApi.Simulator.Sources       shared track mapping: TrackReport, TrackUpdateFactory, TrackEmitterOptions
-  TacticalApi.Simulator.Sources.OpenSky    live OpenSky Network flight tracker — see its README
-  TacticalApi.Simulator.Sources.Synthetic  offline air-track + scenario sources — see its README
-  TacticalApi.Simulator.Sources.Nws        live NWS weather alerts (text + symbol + sketch) — see its README
-  TacticalApi.Simulator.Adapter.OpenSky    runs the OpenSky source as its own executable
-  TacticalApi.Simulator.Adapter.Synthetic  runs the synthetic sources as its own executable
-  TacticalApi.Simulator.Adapter.Nws        runs the NWS source as its own executable
-  TacticalApi.Simulator.Host           ASP.NET Core gRPC server (store + Situation service + map UI)
+  simulator/
+    TacticalApi.Simulator.Contracts     protoc/Grpc.Tools code generation (model + service stubs)
+    TacticalApi.Simulator.Core          store, merge logic, event broker, ingest client, AdapterHost, options
+    TacticalApi.Simulator.Host          ASP.NET Core gRPC server (store + Situation service + map UI)
+  adapter/
+    TacticalApi.Simulator.Sources       shared track mapping: TrackReport, TrackUpdateFactory, TrackEmitterOptions
+    TacticalApi.Simulator.Sources.OpenSky    live OpenSky Network flight tracker — see its README
+    TacticalApi.Simulator.Sources.Synthetic  offline air-track + scenario sources — see its README
+    TacticalApi.Simulator.Sources.Nws        live NWS weather alerts (text + symbol + sketch) — see its README
+    TacticalApi.Simulator.Adapter.OpenSky    runs the OpenSky source as its own executable
+    TacticalApi.Simulator.Adapter.Synthetic  runs the synthetic sources as its own executable
+    TacticalApi.Simulator.Adapter.Nws        runs the NWS source as its own executable
 tests/
   TacticalApi.Simulator.Tests         xUnit tests for store, broker, mapping, sources, Core DI composition
   TacticalApi.Simulator.E2ETests      real host + real adapters + real gRPC sockets
 ```
 
+`src/simulator/` is the simulated TacticalAPI service itself; `src/adapter/` is everything that feeds it data - grouped this way because `Sources.*` is never referenced by the Host, only by an `Adapter.*` (see the dependency direction below).
+
 Dependency direction: `Host → Core → Contracts` and, separately, `Adapter.* → Sources.* → Core → Contracts` - the Host never references any `Sources.*` project, and no `Adapter.*` project references another. Central package management (`Directory.Packages.props`) pins all NuGet versions in one place; shared compiler settings live in `Directory.Build.props` (nullable, warnings-as-errors, analyzers, and `RunWorkingDirectory` so `dotnet run --project <path>` finds that project's own `appsettings.json` regardless of the caller's working directory).
 
 Per-source implementation detail lives with the source, not here:
 
-- [`Sources.OpenSky/README.md`](../src/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
-- [`Sources.Synthetic/README.md`](../src/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and scripted military scenarios (base, convoy escort, combat outpost defense)
-- [`Sources.Nws/README.md`](../src/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts
+- [`Sources.OpenSky/README.md`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker
+- [`Sources.Synthetic/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and scripted military scenarios (base, convoy escort, combat outpost defense)
+- [`Sources.Nws/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts
 
 ## Interface semantics implemented
 

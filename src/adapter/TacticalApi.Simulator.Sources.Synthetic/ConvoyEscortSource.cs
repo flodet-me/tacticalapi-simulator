@@ -167,19 +167,25 @@ public sealed class ConvoyEscortSource(
         var route = new RouteLocation { LocationTime = nowTs, Name = RouteName };
         route.WayPoints.Add(new WayPoint
         {
-            LatitudeCoordinate = o.StartLatitude, LongitudeCoordinate = o.StartLongitude,
-            WayPointName = "SP", Comment = "Convoy start point"
+            LatitudeCoordinate = o.StartLatitude,
+            LongitudeCoordinate = o.StartLongitude,
+            WayPointName = "SP",
+            Comment = "Convoy start point"
         });
         foreach (var zone in BuildRiskZones(o))
             route.WayPoints.Add(new WayPoint
             {
-                LatitudeCoordinate = zone.Lat, LongitudeCoordinate = zone.Lon,
-                WayPointName = zone.Name, Comment = zone.Description
+                LatitudeCoordinate = zone.Lat,
+                LongitudeCoordinate = zone.Lon,
+                WayPointName = zone.Name,
+                Comment = zone.Description
             });
         route.WayPoints.Add(new WayPoint
         {
-            LatitudeCoordinate = o.EndLatitude, LongitudeCoordinate = o.EndLongitude,
-            WayPointName = "RP", Comment = "Convoy release point"
+            LatitudeCoordinate = o.EndLatitude,
+            LongitudeCoordinate = o.EndLongitude,
+            WayPointName = "RP",
+            Comment = "Convoy release point"
         });
 
         return new UpdateSituationObject

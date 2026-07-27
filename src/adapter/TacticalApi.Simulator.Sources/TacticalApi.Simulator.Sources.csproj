@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
+    <ProjectReference Include="..\..\simulator\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(dotnet format --verify-no-changes *)",
+      "Bash(curl -s -o /dev/null -w *)",
+      "Bash(yq eval *)",
+      "Bash(grpcurl -plaintext localhost:*)",
+      "Bash(nix fmt -- --check *)"
+    ]
+  }
+}
