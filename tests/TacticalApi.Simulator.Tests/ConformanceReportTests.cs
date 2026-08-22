@@ -11,12 +11,23 @@ namespace TacticalApi.Simulator.Tests;
 public sealed class ConformanceReportTests
 {
     private static readonly ConformanceCheck Check = new(
-        "example-check", "An example check", "The contract says so.", false,
+        "example-check", "An example check", "The contract says so.",
+        CheckSeverity.Required, true, false,
+        (_, _) => Task.FromResult(CheckResult.Pass()));
+
+    private static readonly ConformanceCheck AdvisoryCheck = new(
+        "example-advisory", "An advisory check", "The contract is silent on this.",
+        CheckSeverity.Advisory, true, false,
         (_, _) => Task.FromResult(CheckResult.Pass()));
 
     private static CheckReport Report(CheckOutcome outcome, string? detail = null)
     {
         return new CheckReport(Check, new CheckResult(outcome, detail), TimeSpan.FromMilliseconds(12));
+    }
+
+    private static CheckReport AdvisoryReport(CheckOutcome outcome, string? detail = null)
+    {
+        return new CheckReport(AdvisoryCheck, new CheckResult(outcome, detail), TimeSpan.FromMilliseconds(12));
     }
 
     [Fact]
@@ -88,7 +99,9 @@ public sealed class ConformanceReportTests
         Assert.NotNull(options);
         Assert.Equal(new Uri(CommandLineOptions.DefaultAddress), options.Address);
         Assert.False(options.GrpcWeb);
-        Assert.False(options.IncludeSlow);
+        Assert.False(options.Selection.IncludeSlow);
+        Assert.False(options.Selection.ReadOnly);
+        Assert.False(options.Strict);
         Assert.False(options.Json);
     }
 
@@ -97,15 +110,21 @@ public sealed class ConformanceReportTests
     {
         var options = CommandLineOptions.Parse(
             ["--address", "http://other:1234", "--grpc-web", "--reporter", "ME", "--include-slow", "--json",
-             "--stream-timeout", "2.5"]);
+             "--stream-timeout", "2.5", "--read-only", "--strict", "--junit", "out/report.xml",
+             "--only", "get-reachable,add-get-roundtrip", "--skip", "add-get-roundtrip"]);
 
         Assert.NotNull(options);
         Assert.Equal(new Uri("http://other:1234"), options.Address);
         Assert.True(options.GrpcWeb);
         Assert.Equal("ME", options.ReporterId);
-        Assert.True(options.IncludeSlow);
+        Assert.True(options.Selection.IncludeSlow);
+        Assert.True(options.Selection.ReadOnly);
+        Assert.True(options.Strict);
         Assert.True(options.Json);
+        Assert.Equal("out/report.xml", options.JUnitPath);
         Assert.Equal(TimeSpan.FromSeconds(2.5), options.StreamTimeout);
+        Assert.Equal(["add-get-roundtrip", "get-reachable"], options.Selection.Only?.Order());
+        Assert.Equal(["add-get-roundtrip"], options.Selection.Skip);
     }
 
     [Theory]
@@ -128,6 +147,12 @@ public sealed class ConformanceReportTests
     [InlineData("--stream-timeout|0")]
     [InlineData("--stream-timeout|abc")]
     [InlineData("--nonsense")]
+    // A --only/--skip id naming no known check is a typo, and a typo that silently
+    // ran the whole suite (or nothing) would look exactly like a pass.
+    [InlineData("--only|no-such-check")]
+    [InlineData("--skip|no-such-check")]
+    [InlineData("--only")]
+    [InlineData("--junit")]
     public void Parse_RejectsBadArguments(string pipeSeparatedArgs)
     {
         Assert.Null(CommandLineOptions.Parse(pipeSeparatedArgs.Split('|')));
@@ -138,12 +163,13 @@ public sealed class ConformanceReportTests
     {
         // An implementation that breaks one rule usually keeps the others; a report of
         // everything beats a stack trace from the first thing that went wrong.
-        var throwing = new ConformanceCheck("throws", "Throws", "n/a", false,
+        var throwing = new ConformanceCheck("throws", "Throws", "n/a",
+            CheckSeverity.Required, true, false,
             (_, _) => throw new Grpc.Core.RpcException(
                 new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "gone")));
 
         var reports = await ConformanceRunner.RunAsync(
-            new ConformanceContext(null!, "TEST", "run"), [throwing, Check], includeSlow: true);
+            new ConformanceContext(null!, "TEST", "run"), [throwing, Check], new RunSelection(IncludeSlow: true));
 
         Assert.Equal(CheckOutcome.Failed, reports[0].Result.Outcome);
         Assert.Contains("Unavailable", reports[0].Result.Detail, StringComparison.Ordinal);
@@ -153,13 +179,161 @@ public sealed class ConformanceReportTests
     [Fact]
     public async Task RunAsync_SkipsSlowChecksUnlessAskedFor()
     {
-        var slow = new ConformanceCheck("slow", "Slow", "n/a", true,
+        var slow = new ConformanceCheck("slow", "Slow", "n/a", CheckSeverity.Required, true, true,
             (_, _) => Task.FromResult(CheckResult.Pass()));
 
         var reports = await ConformanceRunner.RunAsync(
-            new ConformanceContext(null!, "TEST", "run"), [slow], includeSlow: false);
+            new ConformanceContext(null!, "TEST", "run"), [slow], new RunSelection());
 
         Assert.Equal(CheckOutcome.Skipped, Assert.Single(reports).Result.Outcome);
         Assert.Contains("--include-slow", reports[0].Result.Detail, StringComparison.Ordinal);
+    }
+
+    // --- Severity ---------------------------------------------------------------------
+
+    [Fact]
+    public void HasFailed_IgnoresAdvisoryFailuresUnlessStrict()
+    {
+        // An advisory failure means the implementation differs from this simulator on
+        // something the contract does not address. Failing a pipeline over that would
+        // be the fastest way to get the tool switched off.
+        List<CheckReport> reports = [Report(CheckOutcome.Passed), AdvisoryReport(CheckOutcome.Failed, "differs")];
+
+        Assert.False(ConformanceRunner.HasFailed(reports, strict: false));
+        Assert.True(ConformanceRunner.HasFailed(reports, strict: true));
+    }
+
+    [Fact]
+    public void HasFailed_AlwaysFailsOnARequiredFailure()
+    {
+        List<CheckReport> reports = [Report(CheckOutcome.Failed, "broken")];
+
+        Assert.True(ConformanceRunner.HasFailed(reports, strict: false));
+        Assert.True(ConformanceRunner.HasFailed(reports, strict: true));
+    }
+
+    [Fact]
+    public void FormatText_DistinguishesAdvisoryFailuresFromRealOnes()
+    {
+        // Same four letters for both would make the report read worse than the
+        // situation actually is.
+        var text = ConformanceReportFormatter.FormatText(
+            [Report(CheckOutcome.Failed, "broken"), AdvisoryReport(CheckOutcome.Failed, "differs")], "addr");
+
+        Assert.Contains("FAIL example-check", text, StringComparison.Ordinal);
+        Assert.Contains("WARN example-advisory", text, StringComparison.Ordinal);
+        Assert.Contains("1 of the failures advisory", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatJson_SplitsRequiredAndAdvisoryFailures()
+    {
+        var json = JsonDocument.Parse(ConformanceReportFormatter.FormatJson(
+            [Report(CheckOutcome.Failed, "broken"), AdvisoryReport(CheckOutcome.Failed, "differs")], "addr"));
+
+        var summary = json.RootElement.GetProperty("summary");
+        Assert.Equal(1, summary.GetProperty("requiredFailures").GetInt32());
+        Assert.Equal(1, summary.GetProperty("advisoryFailures").GetInt32());
+        Assert.Equal("advisory", json.RootElement.GetProperty("checks")[1].GetProperty("severity").GetString());
+    }
+
+    // --- Selection --------------------------------------------------------------------
+
+    [Fact]
+    public void Selection_RunsEverythingByDefaultExceptSlowChecks()
+    {
+        var selection = new RunSelection();
+
+        Assert.Null(selection.SkipReason(Check));
+        Assert.NotNull(selection.SkipReason(Check with { Slow = true }));
+    }
+
+    [Fact]
+    public void Selection_ReadOnlyExcludesEveryMutatingCheck()
+    {
+        // The point of the mode: it has to be safe to point at a situation somebody
+        // is relying on, so anything that writes is excluded by construction.
+        var selection = new RunSelection(ReadOnly: true);
+
+        Assert.NotNull(selection.SkipReason(Check));
+        Assert.Null(selection.SkipReason(Check with { Mutating = false }));
+    }
+
+    [Fact]
+    public void Selection_OnlyAndSkipNarrowTheRun()
+    {
+        var only = new RunSelection(Only: new HashSet<string> { "example-check" });
+        Assert.Null(only.SkipReason(Check));
+        Assert.NotNull(only.SkipReason(AdvisoryCheck));
+
+        var skip = new RunSelection(Skip: new HashSet<string> { "example-check" });
+        Assert.NotNull(skip.SkipReason(Check));
+        Assert.Null(skip.SkipReason(AdvisoryCheck));
+    }
+
+    [Fact]
+    public async Task RunAsync_ReportsSkippedChecksWithTheReason()
+    {
+        var reports = await ConformanceRunner.RunAsync(
+            new ConformanceContext(null!, "TEST", "run"), [Check], new RunSelection(ReadOnly: true));
+
+        var report = Assert.Single(reports);
+        Assert.Equal(CheckOutcome.Skipped, report.Result.Outcome);
+        Assert.Contains("--read-only", report.Result.Detail, StringComparison.Ordinal);
+    }
+
+    // --- Machine-readable output ------------------------------------------------------
+
+    [Fact]
+    public void FormatJUnit_IsWellFormedAndCountsGatingFailuresOnly()
+    {
+        // Advisory failures are emitted as skipped so a CI gate reflects the same
+        // verdict the exit code does.
+        var xml = new System.Xml.XmlDocument();
+        xml.LoadXml(ConformanceReportFormatter.FormatJUnit(
+            [Report(CheckOutcome.Passed), Report(CheckOutcome.Failed, "broken"),
+             AdvisoryReport(CheckOutcome.Failed, "differs")],
+            "http://host:5100", strict: false));
+
+        var suite = xml.SelectSingleNode("/testsuites/testsuite")!;
+        Assert.Equal("3", suite.Attributes!["tests"]!.Value);
+        Assert.Equal("1", suite.Attributes["failures"]!.Value);
+        Assert.Equal("1", suite.Attributes["skipped"]!.Value);
+        Assert.Equal("http://host:5100", suite.Attributes["hostname"]!.Value);
+        Assert.Equal(3, xml.SelectNodes("/testsuites/testsuite/testcase")!.Count);
+    }
+
+    [Fact]
+    public void FormatJUnit_DeclaresTheEncodingItIsActuallyWrittenIn()
+    {
+        // XmlWriter takes the declaration from its TextWriter, and a plain
+        // StringWriter claims UTF-16 - a file announcing an encoding it isn't saved in
+        // is refused outright by some XML parsers.
+        var xml = ConformanceReportFormatter.FormatJUnit([Report(CheckOutcome.Passed)], "addr", strict: false);
+
+        Assert.Contains("encoding=\"utf-8\"", xml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("utf-16", xml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FormatJUnit_CountsAdvisoryFailuresWhenStrict()
+    {
+        var xml = new System.Xml.XmlDocument();
+        xml.LoadXml(ConformanceReportFormatter.FormatJUnit(
+            [AdvisoryReport(CheckOutcome.Failed, "differs")], "addr", strict: true));
+
+        Assert.Equal("1", xml.SelectSingleNode("/testsuites/testsuite")!.Attributes!["failures"]!.Value);
+    }
+
+    [Fact]
+    public void FormatCatalog_ListsEveryCheckWithItsTags()
+    {
+        var catalog = ConformanceReportFormatter.FormatCatalog(SituationContractChecks.All);
+
+        Assert.Contains($"{SituationContractChecks.All.Count} check(s)", catalog, StringComparison.Ordinal);
+        Assert.Contains("get-reachable", catalog, StringComparison.Ordinal);
+        Assert.Contains("read-only", catalog, StringComparison.Ordinal);
+        Assert.Contains("advisory", catalog, StringComparison.Ordinal);
+        Assert.Contains("slow", catalog, StringComparison.Ordinal);
     }
 }

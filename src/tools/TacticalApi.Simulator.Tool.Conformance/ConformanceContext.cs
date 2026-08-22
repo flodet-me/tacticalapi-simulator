@@ -22,6 +22,15 @@ public sealed class ConformanceContext(
     /// </summary>
     public TimeSpan StreamTimeout { get; } = streamTimeout ?? TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    ///     How long a check watches a stream when it expects to see NOTHING - the
+    ///     read-only probe, and the "a deleted object must not appear" check.
+    ///     Deliberately a fraction of <see cref="StreamTimeout" />: those checks pass
+    ///     by timing out, so the full timeout would be pure waiting, whereas a check
+    ///     that waits for something to arrive has to be patient.
+    /// </summary>
+    public TimeSpan ProbeTimeout => TimeSpan.FromMilliseconds(Math.Max(500, StreamTimeout.TotalMilliseconds / 5));
+
     /// <summary>The client under test.</summary>
     public Situation.SituationClient Client { get; } = client;
 
@@ -101,6 +110,13 @@ public sealed class ConformanceContext(
                 return obj;
 
         return null;
+    }
+
+    /// <summary>Finds one object in the snapshot by identity, whatever type it carries.</summary>
+    public async Task<SituationObject?> FindAnyAsync(Identity identity, CancellationToken cancellationToken)
+    {
+        var snapshot = await GetAllAsync(cancellationToken).ConfigureAwait(false);
+        return snapshot.FirstOrDefault(obj => identity.Equals(SituationObjects.IdentityOf(obj)));
     }
 
     /// <summary>

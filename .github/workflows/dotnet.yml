@@ -384,8 +384,22 @@ jobs:
             sleep 10
           done
 
+          # --strict, unlike the default: advisory checks exist so the tool doesn't
+          # call somebody else's implementation non-conformant over behaviour the
+          # contract leaves open. This repo's own image is the reference - it should
+          # hold every reading the suite documents, including all eleven object types,
+          # so a regression there fails the build rather than printing WARN.
           dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance --configuration Release -- \
-            --address http://localhost:4269 --grpc-web --include-slow
+            --address http://localhost:4269 --grpc-web --include-slow --strict \
+            --junit conformance-junit.xml
+
+      - name: Upload conformance report
+        if: matrix.name == 'host' && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: conformance-${{ needs.build-and-test.outputs.artifact_suffix }}
+          path: conformance-junit.xml
+          if-no-files-found: ignore
 
       - name: Log in to GHCR
         # Only push from main - never from a pull_request build (this

@@ -113,8 +113,23 @@ conformance tool is the other direction — it *verifies* one:
 dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance -- --address http://their-host:5100
 ```
 
-Thirteen checks covering the contract's merge, staleness, delete, streaming and expiry semantics, each quoting the
-rule it enforces. Exit code 0/1, `--json` for pipelines. See
+33 checks covering merge, staleness, delete, streaming, tolerance and expiry semantics — plus one per situation
+object type, generated from the descriptors, because every other check uses `Symbol` and an implementation that
+handles nothing else would otherwise pass everything:
+
+```
+Object types accepted: 8 of 11
+  not accepted: overlay-document, sketch-document, voice-message-document
+```
+
+Each check quotes the rule it enforces and carries a severity: **required** where the contract states the rule
+outright, **advisory** where the contract is silent and this is merely the reading the simulator applies. Advisory
+failures print `WARN` and don't fail the run unless you pass `--strict` — telling an implementer they're
+non-conformant over something the contract never mentions is the fastest way to get a tool ignored.
+
+`--read-only` runs only the checks that never write, so it's safe against a live situation. `--junit` emits a
+report every CI already renders. Exit codes: 0 conformant, 1 non-conformant, 2 bad arguments, 3 endpoint
+unreachable — so a pipeline can tell "your server is down" from "your server is wrong". See
 [`Tool.Conformance`](src/tools/TacticalApi.Simulator.Tool.Conformance/README.md).
 
 ## Documentation

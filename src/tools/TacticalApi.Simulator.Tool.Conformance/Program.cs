@@ -1,12 +1,14 @@
+using System.Globalization;
 using System.Net;
+using Grpc.Core;
 using Grpc.Net.Client;
 using Grpc.Net.Client.Web;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Tool.Conformance;
 
 // Verifies that whatever answers at --address behaves like the TacticalAPI
-// Situation contract requires. Exit code 0 when every check that ran passed,
-// 1 when any failed, 2 when the arguments were wrong.
+// Situation contract requires. Exit codes: 0 conformant, 1 a required check
+// failed, 2 bad arguments, 3 the endpoint could not be reached at all.
 var options = CommandLineOptions.Parse(args);
 if (options is null)
 {
@@ -17,6 +19,12 @@ if (options is null)
 if (options.ShowHelp)
 {
     Console.WriteLine(CommandLineOptions.Usage);
+    return 0;
+}
+
+if (options.ListOnly)
+{
+    Console.WriteLine(ConformanceReportFormatter.FormatCatalog(SituationContractChecks.All));
     return 0;
 }
 
@@ -37,20 +45,12 @@ using var channel = options.GrpcWeb
     })
     : GrpcChannel.ForAddress(options.Address);
 
+var client = new Situation.SituationClient(channel);
 var context = new ConformanceContext(
-    new Situation.SituationClient(channel),
+    client,
     options.ReporterId,
-    DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture),
+    DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture),
     options.StreamTimeout);
-
-if (!options.Json)
-{
-    // This suite writes to the situation it is checking. Saying so up front is
-    // cheaper than explaining it afterwards to whoever was watching that situation.
-    Console.WriteLine($"Running {SituationContractChecks.All.Count} check(s) against {options.Address}.");
-    Console.WriteLine($"This adds and deletes objects under the identity prefix 'conformance:{context.RunId}:'.");
-    Console.WriteLine();
-}
 
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
@@ -59,12 +59,71 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellation.Cancel();
 };
 
+// Reachability is established before the suite runs so that "your server is down"
+// and "your server is wrong" are different exit codes. A pipeline that treats a
+// dead endpoint as a conformance failure will eventually get someone to "fix" a
+// perfectly good implementation.
+if (await Unreachable(client, cancellation.Token).ConfigureAwait(false) is { } error)
+{
+    await Console.Error.WriteLineAsync($"Could not reach {options.Address}: {error}").ConfigureAwait(false);
+    return 3;
+}
+
+if (!options.Json)
+{
+    var selected = SituationContractChecks.All.Count(check => options.Selection.SkipReason(check) is null);
+    Console.WriteLine($"Running {selected} of {SituationContractChecks.All.Count} check(s) against {options.Address}.");
+
+    // This suite writes to the situation it is checking unless told not to. Saying so
+    // up front is cheaper than explaining it afterwards to whoever was watching it.
+    Console.WriteLine(options.Selection.ReadOnly
+        ? "Read-only run: nothing will be written to the situation."
+        : $"This adds and deletes objects under the identity prefix 'conformance:{context.RunId}:'.");
+    Console.WriteLine();
+}
+
 var reports = await ConformanceRunner
-    .RunAsync(context, SituationContractChecks.All, options.IncludeSlow, cancellation.Token)
+    .RunAsync(context, SituationContractChecks.All, options.Selection, cancellation.Token)
     .ConfigureAwait(false);
 
 Console.WriteLine(options.Json
     ? ConformanceReportFormatter.FormatJson(reports, options.Address.ToString())
     : ConformanceReportFormatter.FormatText(reports, options.Address.ToString()));
 
-return ConformanceReportFormatter.Count(reports, CheckOutcome.Failed) > 0 ? 1 : 0;
+if (options.JUnitPath is { } junitPath)
+{
+    var directory = Path.GetDirectoryName(Path.GetFullPath(junitPath));
+    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+    await File.WriteAllTextAsync(
+            junitPath,
+            ConformanceReportFormatter.FormatJUnit(reports, options.Address.ToString(), options.Strict),
+            cancellation.Token)
+        .ConfigureAwait(false);
+}
+
+return ConformanceRunner.HasFailed(reports, options.Strict) ? 1 : 0;
+
+// A single unary call: enough to tell a dead or wrong-protocol endpoint from a
+// live one, without asserting anything about the answer (that is the suite's job).
+static async Task<string?> Unreachable(Situation.SituationClient client, CancellationToken cancellationToken)
+{
+    try
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+
+        await client
+            .GetSituationObjectsAsync(new GetSituationObjectsRequest(), cancellationToken: timeout.Token)
+            .ConfigureAwait(false);
+        return null;
+    }
+    catch (RpcException ex)
+    {
+        return $"{ex.StatusCode} {ex.Status.Detail}";
+    }
+    catch (OperationCanceledException)
+    {
+        return "the call did not complete within 15s";
+    }
+}

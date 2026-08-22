@@ -1,3 +1,6 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Tool.Conformance;
 using Xunit;
 
@@ -27,7 +30,8 @@ public sealed class ConformanceSuiteE2ETests
             factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
         // Act
-        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, includeSlow: true);
+        var reports = await ConformanceRunner.RunAsync(
+            context, SituationContractChecks.All, new RunSelection(IncludeSlow: true));
 
         // Assert
         var failed = reports.Where(r => r.Result.Outcome == CheckOutcome.Failed).ToList();
@@ -49,7 +53,7 @@ public sealed class ConformanceSuiteE2ETests
             factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
         // Act
-        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, includeSlow: false);
+        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
 
         // Assert
         Assert.Contains(reports, r => r.Result.Outcome == CheckOutcome.Skipped);
@@ -73,10 +77,12 @@ public sealed class ConformanceSuiteE2ETests
             factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(1));
 
         // Act
-        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, includeSlow: false);
+        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
 
         // Assert
         Assert.Contains(reports, r => r.Result.Outcome == CheckOutcome.Failed);
+        Assert.True(ConformanceRunner.HasFailed(reports, strict: false),
+            "a Host rejecting every write must fail at least one REQUIRED check, not only advisory ones");
     }
 
     [Fact]
@@ -90,5 +96,94 @@ public sealed class ConformanceSuiteE2ETests
             Assert.False(string.IsNullOrWhiteSpace(check.Title));
             Assert.False(string.IsNullOrWhiteSpace(check.Requirement));
         });
+    }
+
+    [Fact]
+    public async Task EveryObjectTypeInTheContract_HasItsOwnCheck()
+    {
+        // Without these the whole suite could pass against an implementation that only
+        // ever handles Symbol - the single most likely way for a real integration to
+        // come apart. Generated from the descriptors, so a twelfth type added upstream
+        // is covered automatically rather than quietly going unchecked.
+        await using var factory = new SimulatorFactory();
+        var context = new ConformanceContext(
+            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+
+        var typeChecks = SituationContractChecks.All
+            .Where(c => c.Id.StartsWith("object-type-", StringComparison.Ordinal))
+            .ToList();
+
+        // Act
+        var reports = await ConformanceRunner.RunAsync(
+            context, typeChecks, new RunSelection(Only: typeChecks.Select(c => c.Id).ToHashSet()));
+
+        // Assert - eleven types in the contract, eleven checks, all passing.
+        Assert.Equal(11, typeChecks.Count);
+        Assert.All(reports, r => Assert.Equal(CheckOutcome.Passed, r.Result.Outcome));
+        Assert.Contains(typeChecks, c => c.Id == "object-type-overlay-document");
+        Assert.Contains(typeChecks, c => c.Id == "object-type-symbol");
+    }
+
+    [Fact]
+    public async Task ReadOnlyRun_WritesNothingToTheSituation()
+    {
+        // The promise the mode makes. If it were ever broken, someone would find out
+        // by running this against a situation that mattered.
+        await using var factory = new SimulatorFactory();
+        var client = factory.CreateGrpcClient();
+        var http = factory.CreateClient();
+
+        await client.AddOrUpdateSituationObjectsAsync(new AddOrUpdateSituationObjectsRequest
+        {
+            SituationObjects = { E2E.Symbol("e2e:readonly:untouched", DateTimeOffset.UtcNow, "ALPHA") }
+        });
+
+        var context = new ConformanceContext(
+            client, "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(2));
+
+        // Act
+        var reports = await ConformanceRunner.RunAsync(
+            context, SituationContractChecks.All, new RunSelection(ReadOnly: true));
+
+        // Assert - the read-only checks ran and passed...
+        var ran = reports.Where(r => r.Result.Outcome != CheckOutcome.Skipped).ToList();
+        Assert.NotEmpty(ran);
+        Assert.All(ran, r => Assert.Equal(CheckOutcome.Passed, r.Result.Outcome));
+        Assert.All(ran, r => Assert.False(r.Check.Mutating));
+
+        // ...and the situation is exactly as it was.
+        var after = (await client.GetSituationObjectsAsync(new GetSituationObjectsRequest())).SituationObjects;
+        Assert.Single(after);
+        Assert.Equal("e2e:readonly:untouched", after[0].Symbol.Identity.StringIdentity);
+
+        var state = await http.GetFromJsonAsync<JsonElement>("/api/control/state");
+        Assert.Equal(1, state.GetProperty("situationObjects").GetInt32());
+    }
+
+    [Fact]
+    public async Task Suite_LeavesNothingBehindAfterAFullRun()
+    {
+        // Every check cleans up after itself, so a run against a live situation is
+        // safe to repeat. The identity prefix is the safety net, not the plan - this
+        // asserts the plan actually works.
+        await using var factory = new SimulatorFactory();
+        var client = factory.CreateGrpcClient();
+
+        var runId = $"e2e{Guid.NewGuid():N}";
+        var context = new ConformanceContext(client, "E2E-Conformance", runId);
+
+        // Act
+        await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
+
+        // Assert
+        var remaining = (await client.GetSituationObjectsAsync(new GetSituationObjectsRequest()))
+            .SituationObjects
+            .Where(o => (SituationObjects.IdentityOf(o)?.StringIdentity ?? string.Empty)
+                .Contains(runId, StringComparison.Ordinal))
+            .Select(o => SituationObjects.IdentityOf(o)?.StringIdentity)
+            .ToList();
+
+        Assert.True(remaining.Count == 0,
+            "the suite left objects behind: " + string.Join(", ", remaining));
     }
 }

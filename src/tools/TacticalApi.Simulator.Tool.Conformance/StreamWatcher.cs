@@ -89,4 +89,50 @@ internal static class StreamWatcher
             // Reported through the check's own result instead.
         }
     }
+
+    /// <summary>
+    ///     Opens a subscription, reads whatever arrives until the timeout, and reports
+    ///     the transport failure if there was one. Writes nothing, which is what makes
+    ///     it safe to point at a situation somebody is relying on.
+    ///     Returns null on success. Timing out is success here: an empty situation
+    ///     legitimately sends no initial snapshot at all, so "saw an object" would be a
+    ///     property of the data rather than of the implementation.
+    /// </summary>
+    internal static async Task<string?> TryOpenAsync(
+        ConformanceContext context, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        using var call = context.Client.SubscribeSituationObjectEvents(
+            new SubscribeSituationObjectEventsRequest(), cancellationToken: timeoutCts.Token);
+
+        try
+        {
+            // One response is all this needs: the stream opened, the server answered,
+            // and the header says so. Waiting out the rest of the probe would only be
+            // slow. An empty situation legitimately sends nothing at all, and runs to
+            // the timeout instead - which is also a pass.
+            var enumerator = call.ResponseStream.ReadAllAsync(timeoutCts.Token).GetAsyncEnumerator(timeoutCts.Token);
+            await using var _ = enumerator.ConfigureAwait(false);
+
+            if (await enumerator.MoveNextAsync().ConfigureAwait(false) &&
+                enumerator.Current.Header is { Success: false } header)
+                return $"the stream reported header.success = false: {header.ErrorMessage}";
+        }
+        catch (OperationCanceledException)
+        {
+            // The timeout elapsed with the stream healthy - nothing was wrong.
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Cancelled or StatusCode.DeadlineExceeded)
+        {
+            // As above: our own deadline, not the server's doing.
+        }
+        catch (RpcException ex)
+        {
+            return $"{ex.StatusCode} {ex.Status.Detail}";
+        }
+
+        return null;
+    }
 }
