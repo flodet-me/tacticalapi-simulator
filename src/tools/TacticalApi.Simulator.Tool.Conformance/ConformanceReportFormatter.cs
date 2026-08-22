@@ -11,6 +11,12 @@ public static class ConformanceReportFormatter
     /// <summary>Prefix of the generated per-object-type check ids.</summary>
     public const string ObjectTypePrefix = "object-type-";
 
+    /// <summary>Prefix of the generated per-identity-kind check ids.</summary>
+    public const string IdentityKindPrefix = "identity-kind-";
+
+    /// <summary>Prefix of the generated per-location-kind check ids.</summary>
+    public const string LocationKindPrefix = "location-";
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     /// <summary>Renders a plain-text report suitable for a terminal or a CI log.</summary>
@@ -52,20 +58,12 @@ public static class ConformanceReportFormatter
         var advisory = reports.Count(r =>
             r.Result.Outcome == CheckOutcome.Failed && r.Check.Severity == CheckSeverity.Advisory);
 
-        // Which of the eleven object types the implementation actually takes is the
-        // single most useful line in this report for someone planning an integration,
-        // and it would otherwise be spread across eleven rows in the middle.
-        var (accepted, rejected) = ObjectTypeSupport(reports);
-        if (accepted.Count + rejected.Count > 0)
-        {
-            builder.AppendLine();
-            builder.Append(CultureInfo.InvariantCulture,
-                $"Object types accepted: {accepted.Count} of {accepted.Count + rejected.Count}");
-            builder.AppendLine();
-
-            if (rejected.Count > 0)
-                builder.Append("  not accepted: ").AppendLine(string.Join(", ", rejected));
-        }
+        // What the implementation actually accepts is the most useful part of this
+        // report for someone planning an integration, and it would otherwise be spread
+        // across two dozen rows in the middle of everything else.
+        AppendCapability(builder, reports, ObjectTypePrefix, "Object types");
+        AppendCapability(builder, reports, IdentityKindPrefix, "Identity kinds");
+        AppendCapability(builder, reports, LocationKindPrefix, "Location kinds");
 
         builder.AppendLine();
         builder.Append(CultureInfo.InvariantCulture, $"{passed} passed, {failed} failed, {skipped} skipped");
@@ -100,10 +98,11 @@ public static class ConformanceReportFormatter
                 advisoryFailures = reports.Count(r =>
                     r.Result.Outcome == CheckOutcome.Failed && r.Check.Severity == CheckSeverity.Advisory)
             },
-            objectTypes = new
+            capabilities = new
             {
-                accepted = ObjectTypeSupport(reports).Accepted,
-                notAccepted = ObjectTypeSupport(reports).Rejected
+                objectTypes = Capability(reports, ObjectTypePrefix),
+                identityKinds = Capability(reports, IdentityKindPrefix),
+                locationKinds = Capability(reports, LocationKindPrefix)
             },
             checks = reports.Select(report => new
             {
@@ -214,23 +213,24 @@ public static class ConformanceReportFormatter
     }
 
     /// <summary>
-    ///     Splits the per-object-type results into the types the implementation took
-    ///     and the types it refused. Skipped types count as neither - they were not
-    ///     asked about.
+    ///     Splits one family of generated capability checks into what the
+    ///     implementation took and what it refused. Skipped entries count as neither -
+    ///     they were not asked about.
     /// </summary>
-    public static (IReadOnlyList<string> Accepted, IReadOnlyList<string> Rejected) ObjectTypeSupport(
-        IReadOnlyList<CheckReport> reports)
+    public static (IReadOnlyList<string> Accepted, IReadOnlyList<string> Rejected) Capability(
+        IReadOnlyList<CheckReport> reports, string prefix)
     {
         ArgumentNullException.ThrowIfNull(reports);
+        ArgumentNullException.ThrowIfNull(prefix);
 
         var accepted = new List<string>();
         var rejected = new List<string>();
 
         foreach (var report in reports)
         {
-            if (!report.Check.Id.StartsWith(ObjectTypePrefix, StringComparison.Ordinal)) continue;
+            if (!report.Check.Id.StartsWith(prefix, StringComparison.Ordinal)) continue;
 
-            var name = report.Check.Id[ObjectTypePrefix.Length..];
+            var name = report.Check.Id[prefix.Length..];
             switch (report.Result.Outcome)
             {
                 case CheckOutcome.Passed:
@@ -245,6 +245,21 @@ public static class ConformanceReportFormatter
         }
 
         return (accepted, rejected);
+    }
+
+    private static void AppendCapability(
+        StringBuilder builder, IReadOnlyList<CheckReport> reports, string prefix, string label)
+    {
+        var (accepted, rejected) = Capability(reports, prefix);
+        if (accepted.Count + rejected.Count == 0) return;
+
+        builder.AppendLine();
+        builder.Append(CultureInfo.InvariantCulture,
+            $"{label} accepted: {accepted.Count} of {accepted.Count + rejected.Count}");
+        builder.AppendLine();
+
+        if (rejected.Count > 0)
+            builder.Append("  not accepted: ").AppendLine(string.Join(", ", rejected));
     }
 
     private static bool IsGatingFailure(CheckReport report, bool strict)

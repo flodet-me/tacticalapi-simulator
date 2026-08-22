@@ -135,4 +135,51 @@ internal static class StreamWatcher
 
         return null;
     }
+
+    /// <summary>
+    ///     Watches the stream across a change and returns the error carried by the
+    ///     first unsuccessful response header, or null if every response was fine.
+    ///     Worth its own check because <c>SubscribeSituationObjectEventsResponse</c>
+    ///     carries a header on every single message, and an implementation that never
+    ///     populates it - or populates it with success = false while streaming real
+    ///     data - is one a careful client would refuse to trust.
+    /// </summary>
+    internal static async Task<string?> FindBadHeaderAsync(
+        ConformanceContext context, Func<Task> afterSubscribed, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(context.StreamTimeout);
+
+        using var call = context.Client.SubscribeSituationObjectEvents(
+            new SubscribeSituationObjectEventsRequest(), cancellationToken: timeoutCts.Token);
+
+        var trigger = TriggerAsync(afterSubscribed, timeoutCts.Token);
+
+        try
+        {
+            await foreach (var response in call.ResponseStream.ReadAllAsync(timeoutCts.Token).ConfigureAwait(false))
+            {
+                if (response.Header is null) return "a streamed response carried no header at all";
+                if (!response.Header.Success) return response.Header.ErrorMessage ?? "(no error_message)";
+
+                // One good batch after the change is enough; the check is about the
+                // header, not about what the batch contains.
+                if (response.SituationObjects.Count > 0) return null;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Nothing bad seen before the timeout.
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Cancelled or StatusCode.DeadlineExceeded)
+        {
+            // As above.
+        }
+        finally
+        {
+            await ObserveAsync(trigger).ConfigureAwait(false);
+        }
+
+        return null;
+    }
 }

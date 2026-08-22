@@ -101,30 +101,82 @@ accepts a subscription.
 | `empty-batch-accepted` | A request carrying no objects succeeds |
 | `repeated-update-is-idempotent` | Sending the identical update twice leaves the object unchanged |
 
-**Object type coverage** — `object-type-symbol`, `object-type-action-task`, … one per type, all advisory.
+**Property shapes** — the ones a merge written against the common case tends to get half-right.
 
-Generated from the protobuf descriptors, so a twelfth type added upstream is covered automatically instead of
-quietly going unchecked. **This is the part that matters most for a real integration**: every other check in the
-suite uses `Symbol`, so without these an implementation that handles nothing but symbols would pass everything.
+| Id | Severity | Rule |
+|----|----------|------|
+| `foreign-key-stored` | required | A `foreign_key` set by an update appears among the object's `foreign_keys` |
+| `byte-array-property-roundtrip` | required | A byte-array property round-trips content **and** MIME type |
+| `references-property-replaces` | required | A references property replaces the whole list rather than appending |
+| `dimension-property-roundtrip` | required | A dimension property round-trips all three of x/y/z |
+| `overlay-nests-objects` | required | An overlay stores the situation objects nested inside it |
+| `stream-headers-successful` | required | Every response on the event stream carries a successful header |
 
-They're advisory because the contract declares eleven types but nowhere says an implementation must accept all of
-them — a product supporting a subset isn't thereby non-conformant. So the report treats them as a capability
-matrix and prints the summary up front:
+Plain string/int/timestamp properties are already covered by the merge checks above. These five are the shapes
+where a naive implementation breaks: two fields instead of one, a list with replace semantics, three components
+and no `content` field at all, a single `foreign_key` landing in a `map`, and nested `UpdateSituationObject`s that
+have to be materialized into whole `SituationObject`s.
+
+**Rejection and tolerance**
+
+| Id | Severity | Rule |
+|----|----------|------|
+| `delete-missing-identity-rejected` | required | A delete with no identity is rejected |
+| `mixed-type-batch` | required | One batch carrying several different object types is applied in full |
+| `unknown-delete-tolerated` | advisory | Deleting an identity that doesn't exist is not an error |
+| `empty-batch-accepted` | advisory | A request carrying no objects succeeds |
+| `repeated-update-is-idempotent` | advisory | Sending the identical update twice leaves the object unchanged |
+| `typeless-update-rejected` | advisory | An update carrying no object type at all is rejected |
+| `error-header-explains` | advisory | A rejected request explains itself in `header.error_message` |
+
+## Capability matrices
+
+Three oneofs in the contract are places an implementation can quietly support a subset — and every hand-written
+check in the suite uses `symbol` + `string_identity` + `point`, so without these an implementation handling only
+those three would pass everything.
+
+| Family | Cases | Ids |
+|--------|-------|-----|
+| Object types | 11 | `object-type-symbol`, `object-type-overlay-document`, … |
+| Identity kinds | 4 | `identity-kind-uuid-identity`, `identity-kind-string-identity`, … |
+| Location kinds | 9 | `location-polygon`, `location-corridor`, `location-route-location`, … |
+
+All generated from the protobuf descriptors, so a case added upstream is covered automatically instead of quietly
+going unchecked. All advisory: the contract declares these cases but nowhere says an implementation must accept
+all of them — and it explicitly marks the integer identity kinds "not for external use to create new objects". A
+product supporting a subset isn't thereby non-conformant. So the report treats them as capabilities and prints the
+summary up front:
 
 ```
 Object types accepted: 8 of 11
   not accepted: overlay-document, sketch-document, voice-message-document
+
+Identity kinds accepted: 2 of 4
+  not accepted: int32-identity, int64-identity
+
+Location kinds accepted: 4 of 9
+  not accepted: ellipse, fan, sketch-location, corridor, route-location
 ```
 
-Pass `--strict` if you do require all eleven.
+That block is the most useful thing in the report if you are planning an integration. Pass `--strict` if you do
+require the full set.
+
+The location checks populate real geometry — three distinct points for a polygon or line, a centre and conjugate
+diameter points for an ellipse — because an implementation would be entirely within its rights to reject an empty
+polygon, and a check that provokes a defensible rejection reports a false failure. They then assert the location
+came back as *the same oneof case*: an implementation that stored your corridor as a line has silently changed the
+geometry.
 
 **Slow** (needs `--include-slow`)
 
 | Id | Severity | Rule |
 |----|----------|------|
 | `expiry-marks-deleted` | required | An object whose `expiry_time` has passed is marked deleted on its own |
+| `expiry-extension-prevents-deletion` | required | Pushing `expiry_time` into the future keeps an object alive |
 
-The contract states the behaviour but not a deadline; this allows 30s.
+The contract states both outright — *"Expired symbols are automatically marked as deleted"*, *"It's possible to
+extend this time"* — but gives no deadline for either, so these allow 30s and 10s respectively. Those numbers are
+judgement calls, not contract: too short and the extension check passes merely because nothing has swept yet.
 
 ## Options
 

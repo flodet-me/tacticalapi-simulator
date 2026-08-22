@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Frozen;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
@@ -27,6 +28,14 @@ public static class SituationObjects
 
     private static readonly FrozenDictionary<SituationObject.TypeOneofCase, FieldDescriptor> UpdateFieldsByType =
         BuildUpdateFields();
+
+    /// <summary>Every identity kind the contract declares, in oneof order.</summary>
+    public static IReadOnlyList<FieldDescriptor> IdentityKinds { get; } =
+        [.. Identity.Descriptor.Oneofs[0].Fields];
+
+    /// <summary>Every location kind <c>SymbolLocation</c> declares, in oneof order.</summary>
+    public static IReadOnlyList<FieldDescriptor> LocationKinds { get; } =
+        [.. SymbolLocation.Descriptor.Oneofs[0].Fields];
 
     /// <summary>Every situation object type the contract declares, in oneof order.</summary>
     public static IReadOnlyList<SituationObject.TypeOneofCase> AllTypes { get; } =
@@ -78,6 +87,62 @@ public static class SituationObjects
             as CreationMetaData;
     }
 
+    /// <summary>
+    ///     Builds an <see cref="Identity" /> of one of the four kinds the contract's
+    ///     oneof declares, carrying <paramref name="value" /> in whichever
+    ///     representation that kind uses.
+    ///     Integer kinds get a hash of the value rather than the string itself: they
+    ///     are declared as int32/int64, and the point of the check they serve is
+    ///     whether the implementation keys on the right oneof field at all.
+    /// </summary>
+    public static Identity CreateIdentity(FieldDescriptor kind, string value)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+
+        var identity = new Identity();
+        object typed = kind.FieldType switch
+        {
+            FieldType.String when kind.Name == "uuid_identity" => Deterministic(value).ToString(),
+            FieldType.String => value,
+            FieldType.Int32 => (int)(uint)value.GetHashCode(StringComparison.Ordinal),
+            FieldType.Int64 => (long)(uint)value.GetHashCode(StringComparison.Ordinal),
+            _ => value
+        };
+
+        kind.Accessor.SetValue(identity, typed);
+        return identity;
+    }
+
+    /// <summary>
+    ///     Builds a <see cref="SymbolLocation" /> of one of the nine kinds the contract
+    ///     declares, with its geometry filled in.
+    ///     The geometry is populated by walking the descriptors for anything shaped
+    ///     like a <see cref="GeoPoint" /> - every location kind carries its geometry
+    ///     either as a singular GeoPoint field, a repeated one, or a repeated message
+    ///     that contains one - rather than by nine hand-written builders. An empty
+    ///     location would still exercise the oneof, but an implementation would be
+    ///     entirely within its rights to reject a polygon with no points, and a check
+    ///     that provokes a defensible rejection is a check that reports a false
+    ///     failure.
+    /// </summary>
+    public static SymbolLocation CreateLocation(FieldDescriptor kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+
+        var location = new SymbolLocation();
+        var inner = kind.MessageType.Parser.ParseFrom(ReadOnlySpan<byte>.Empty);
+        PopulateGeometry(inner, 0);
+        kind.Accessor.SetValue(location, inner);
+        return location;
+    }
+
+    /// <summary>Kebab-case name of any oneof field, used in check ids ("overlay-document").</summary>
+    public static string SlugOf(FieldDescriptor field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        return field.Name.Replace('_', '-');
+    }
+
     /// <summary>Kebab-case name of a type, used in check ids ("overlay-document").</summary>
     public static string SlugOf(SituationObject.TypeOneofCase type)
     {
@@ -88,6 +153,60 @@ public static class SituationObjects
     public static string NameOf(SituationObject.TypeOneofCase type)
     {
         return UpdateFieldsByType[type].Name;
+    }
+
+    /// <summary>
+    ///     Fills in every GeoPoint reachable from <paramref name="message" />, giving
+    ///     repeated geometry three distinct points so a polygon or line is a real one.
+    ///     <paramref name="depth" /> bounds the walk: the location messages are shallow,
+    ///     and a descriptor cycle here would otherwise hang the whole suite.
+    /// </summary>
+    private static void PopulateGeometry(IMessage message, int depth)
+    {
+        if (depth > 3) return;
+
+        foreach (var field in message.Descriptor.Fields.InDeclarationOrder())
+        {
+            if (field.FieldType != FieldType.Message) continue;
+
+            if (field.IsRepeated)
+            {
+                if (field.Accessor.GetValue(message) is not IList list) continue;
+
+                for (var i = 0; i < 3; i++)
+                {
+                    var element = field.MessageType.Parser.ParseFrom(ReadOnlySpan<byte>.Empty);
+                    if (element is GeoPoint point) Fill(point, i);
+                    else PopulateGeometry(element, depth + 1);
+
+                    list.Add(element);
+                }
+
+                continue;
+            }
+
+            if (field.MessageType.ClrType != typeof(GeoPoint)) continue;
+
+            var geoPoint = new GeoPoint();
+            Fill(geoPoint, depth);
+            field.Accessor.SetValue(message, geoPoint);
+        }
+    }
+
+    private static void Fill(GeoPoint point, int index)
+    {
+        // Somewhere plausible and, importantly, distinct per index - a "polygon" whose
+        // three points coincide is not a polygon.
+        point.LatitudeCoordinate = 53.0 + index * 0.01;
+        point.LongitudeCoordinate = 8.8 + index * 0.01;
+    }
+
+    private static Guid Deterministic(string value)
+    {
+        var bytes = new byte[16];
+        var source = System.Text.Encoding.UTF8.GetBytes(value);
+        for (var i = 0; i < bytes.Length; i++) bytes[i] = source[i % source.Length];
+        return new Guid(bytes);
     }
 
     private static void Set(IMessage message, string fieldName, object value)

@@ -20,6 +20,16 @@ public static class SituationContractChecks
 {
     private static readonly TimeSpan ExpirySweepAllowance = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    ///     How long the extension check waits before deciding an extended object
+    ///     survived. It has to exceed the implementation's sweep interval, which is not
+    ///     something the contract specifies or this tool can discover - so this is a
+    ///     judgement call, generous enough to cover a typical periodic sweep. Too short
+    ///     and the check passes because nothing has swept yet, which is worse than
+    ///     taking ten seconds.
+    /// </summary>
+    private static readonly TimeSpan ExpiryExtensionSettleTime = TimeSpan.FromSeconds(10);
+
     /// <summary>Every check, in the order they are run and reported.</summary>
     public static IReadOnlyList<ConformanceCheck> All { get; } = [.. BuildAll()];
 
@@ -88,6 +98,29 @@ public static class SituationContractChecks
             "Required: Time of changes.",
             CheckSeverity.Required, true, false, MissingReportingTimeRejectedAsync);
 
+        yield return new ConformanceCheck("delete-missing-identity-rejected",
+            "A delete without an identity is rejected with an error header",
+            "Required: The unique identity of the symbol. (DeleteSituationObject)",
+            CheckSeverity.Required, true, false, DeleteMissingIdentityRejectedAsync);
+
+        yield return new ConformanceCheck("typeless-update-rejected",
+            "An update carrying no object type at all is rejected",
+            "Not stated by the contract: the oneof can legally be empty on the wire, and the simulator "
+            + "refuses such an update because there is nothing to store. Ignoring it is a defensible reading.",
+            CheckSeverity.Advisory, true, false, TypelessUpdateRejectedAsync);
+
+        yield return new ConformanceCheck("error-header-explains",
+            "A rejected request explains itself in header.error_message",
+            "Not stated by the contract: error_message is a nullable StringValue, so leaving it empty is "
+            + "legal. An implementation that does leave it empty gives a client nothing to act on.",
+            CheckSeverity.Advisory, true, false, ErrorHeaderExplainsAsync);
+
+        yield return new ConformanceCheck("mixed-type-batch",
+            "One batch carrying several different object types is applied in full",
+            "Specifies the situation objects to be added or updated - a repeated UpdateSituationObject, "
+            + "each with its own type.",
+            CheckSeverity.Required, true, false, MixedTypeBatchAsync);
+
         // --- Streaming -------------------------------------------------------------
         yield return new ConformanceCheck("subscribe-snapshot-first",
             "SubscribeSituationObjectEvents opens with the existing situation",
@@ -138,6 +171,39 @@ public static class SituationContractChecks
             "Specifies the situation objects to be added or updated (a repeated field).",
             CheckSeverity.Required, true, false, BatchAppliesEveryObjectAsync);
 
+        // --- Property shapes the contract declares but a naive merge tends to miss ---
+        yield return new ConformanceCheck("foreign-key-stored",
+            "A foreign_key set by an update appears among the object's foreign_keys",
+            "A foreign key for mediation between external systems/interfaces. The update model carries one "
+            + "(content + source); the stored model keeps a dictionary of them.",
+            CheckSeverity.Required, true, false, ForeignKeyStoredAsync);
+
+        yield return new ConformanceCheck("byte-array-property-roundtrip",
+            "A byte-array property round-trips with both its content and its MIME type",
+            "Byte array (empty was handled as null). The byte array type as MIME type.",
+            CheckSeverity.Required, true, false, ByteArrayPropertyAsync);
+
+        yield return new ConformanceCheck("references-property-replaces",
+            "A references property replaces the whole list rather than appending to it",
+            "List of identities for reference between situation objects - a present UpdateProperty replaces "
+            + "the stored value.",
+            CheckSeverity.Required, true, false, ReferencesPropertyAsync);
+
+        yield return new ConformanceCheck("dimension-property-roundtrip",
+            "A dimension property round-trips all three of its components",
+            "Nullable integer 32 value in [m] - x, y and z, a property with no single 'content' field.",
+            CheckSeverity.Required, true, false, DimensionPropertyAsync);
+
+        yield return new ConformanceCheck("overlay-nests-objects",
+            "An overlay document stores the situation objects nested inside it",
+            "The contained overlay situation objects. List of situation object.",
+            CheckSeverity.Required, true, false, OverlayNestsObjectsAsync);
+
+        yield return new ConformanceCheck("stream-headers-successful",
+            "Every response on the event stream carries a successful header",
+            "Specifies if the command was successful (ResponseHeader, on every streamed response).",
+            CheckSeverity.Required, true, false, StreamHeadersSuccessfulAsync);
+
         // --- Object type coverage --------------------------------------------------
         // One per type, generated from the descriptors. Without these the whole suite
         // could pass against an implementation that only ever handles Symbol, which is
@@ -145,13 +211,468 @@ public static class SituationContractChecks
         // other check in this file uses Symbol and would be perfectly happy.
         foreach (var type in SituationObjects.AllTypes) yield return ObjectTypeCheck(type);
 
+        // --- Identity kind coverage --------------------------------------------------
+        // Identity is a oneof of four, and every other check in this file uses
+        // string_identity. An implementation that keys its store on the wrong oneof
+        // field - or handles only strings - passes everything else.
+        foreach (var kind in SituationObjects.IdentityKinds) yield return IdentityKindCheck(kind);
+
+        // --- Location kind coverage --------------------------------------------------
+        // SymbolLocation is a oneof of nine, and every other check uses point. Areas,
+        // corridors and routes are the tactically interesting ones and the likeliest to
+        // have been left out.
+        foreach (var kind in SituationObjects.LocationKinds) yield return LocationKindCheck(kind);
+
         // --- Slow ------------------------------------------------------------------
+        yield return new ConformanceCheck("expiry-extension-prevents-deletion",
+            "Pushing expiry_time into the future keeps an object alive",
+            "It's possible to extend this time.",
+            CheckSeverity.Required, true, true, ExpiryExtensionPreventsDeletionAsync);
+
         yield return new ConformanceCheck("expiry-marks-deleted",
             "An object whose expiry_time has passed is marked deleted on its own",
             "Expired symbols are automatically marked as deleted and removed from the map. "
             + "(The contract states the behaviour but not a deadline; this allows "
             + $"{ExpirySweepAllowance.TotalSeconds:F0}s.)",
             CheckSeverity.Required, true, true, ExpiryMarksDeletedAsync);
+    }
+
+    // --- Rejection and tolerance -------------------------------------------------------
+
+    private static async Task<CheckResult> DeleteMissingIdentityRejectedAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var request = new DeleteSituationObjectsRequest();
+        request.SituationObjects.Add(new DeleteSituationObject
+        {
+            Reporter = context.Reporter,
+            ReportingTime = ConformanceContext.Now()
+        });
+
+        var response = await context.Client
+            .DeleteSituationObjectsAsync(request, cancellationToken: token)
+            .ConfigureAwait(false);
+
+        return response.Header.Success
+            ? CheckResult.Fail("a delete with no identity was accepted")
+            : CheckResult.Pass();
+    }
+
+    private static async Task<CheckResult> TypelessUpdateRejectedAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        // A legal message on the wire - the oneof is simply unset - that names no
+        // object to store.
+        var header = await context.AddOrUpdateAsync(token, new UpdateSituationObject()).ConfigureAwait(false);
+
+        return header.Success
+            ? CheckResult.Fail("an update carrying no object type was accepted")
+            : CheckResult.Pass();
+    }
+
+    private static async Task<CheckResult> ErrorHeaderExplainsAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        // Provoked with the one rejection every implementation should agree on.
+        var update = new UpdateSituationObject
+        {
+            Symbol = new UpdateSymbol { Reporter = context.Reporter, ReportingTime = ConformanceContext.Now() }
+        };
+
+        var header = await context.AddOrUpdateAsync(token, update).ConfigureAwait(false);
+        if (header.Success) return CheckResult.Skip("the implementation accepted an update with no identity");
+
+        return string.IsNullOrWhiteSpace(header.ErrorMessage)
+            ? CheckResult.Fail("the request was rejected with an empty error_message")
+            : CheckResult.Pass();
+    }
+
+    private static async Task<CheckResult> MixedTypeBatchAsync(ConformanceContext context, CancellationToken token)
+    {
+        var now = ConformanceContext.Now();
+        var identities = SituationObjects.AllTypes
+            .Select(type => (Type: type, Identity: context.NewIdentity($"mixed-{SituationObjects.SlugOf(type)}")))
+            .ToList();
+
+        try
+        {
+            var updates = identities
+                .Select(entry => SituationObjects.CreateMinimalUpdate(
+                    entry.Type, entry.Identity, context.Reporter, now))
+                .ToArray();
+
+            var header = await context.AddOrUpdateAsync(token, updates).ConfigureAwait(false);
+            if (!header.Success) return CheckResult.Fail($"the mixed batch was rejected: {header.ErrorMessage}");
+
+            var snapshot = await context.GetAllAsync(token).ConfigureAwait(false);
+            var missing = identities
+                .Where(entry => !snapshot.Any(o => entry.Identity.Equals(SituationObjects.IdentityOf(o))))
+                .Select(entry => SituationObjects.SlugOf(entry.Type))
+                .ToList();
+
+            return missing.Count == 0
+                ? CheckResult.Pass($"{identities.Count} types in one call")
+                : CheckResult.Fail($"missing from the snapshot after a mixed batch: {string.Join(", ", missing)}");
+        }
+        finally
+        {
+            await context.TryCleanupAsync([.. identities.Select(entry => entry.Identity)]).ConfigureAwait(false);
+        }
+    }
+
+    // --- Property shapes ---------------------------------------------------------------
+
+    private static async Task<CheckResult> ForeignKeyStoredAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("foreign-key");
+        try
+        {
+            await context.AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now(),
+                symbol => symbol.ForeignKey = new UpdatePropertyIdentity
+                {
+                    Content = new Identity { StringIdentity = "GIS-4471" },
+                    Source = "gis"
+                })).ConfigureAwait(false);
+
+            var stored = await context.FindAsync(identity, token).ConfigureAwait(false);
+            if (stored is null) return CheckResult.Fail("the object was not in the snapshot after a successful write");
+
+            // Deliberately not asserting the map KEY: the contract says the stored model
+            // is a dictionary of foreign keys, but never says the key is the source.
+            var match = stored.Symbol.ForeignKeys.Values
+                .FirstOrDefault(fk => fk.Content?.StringIdentity == "GIS-4471");
+
+            if (match is null)
+                return CheckResult.Fail(
+                    $"the foreign key was not stored (foreign_keys holds {stored.Symbol.ForeignKeys.Count} entry/entries)");
+
+            return match.Source == "gis"
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"the stored foreign key's source was '{match.Source}', expected 'gis'");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<CheckResult> ByteArrayPropertyAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("byte-array");
+        var payload = Google.Protobuf.ByteString.CopyFrom(1, 2, 3, 4, 5);
+        try
+        {
+            // A picture document is the natural carrier; the property shape (content
+            // plus a separate MIME type) is what is under test.
+            var update = new UpdateSituationObject
+            {
+                PictureDocument = new UpdatePictureDocument
+                {
+                    Identity = identity,
+                    Reporter = context.Reporter,
+                    ReportingTime = ConformanceContext.Now(),
+                    PictureData = new UpdatePropertyByteArray { Content = payload, Type = "image/png" }
+                }
+            };
+
+            var header = await context.AddOrUpdateAsync(token, update).ConfigureAwait(false);
+            if (!header.Success) return CheckResult.Fail($"the write was rejected: {header.ErrorMessage}");
+
+            var stored = await context.FindAnyAsync(identity, token).ConfigureAwait(false);
+            if (stored?.PictureDocument?.PictureData is not { } picture)
+                return CheckResult.Fail("the byte-array property was not stored");
+
+            if (!picture.Content.Equals(payload))
+                return CheckResult.Fail(
+                    $"the content came back as {picture.Content.Length} byte(s), expected {payload.Length}");
+
+            return picture.Type == "image/png"
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"the MIME type came back as '{picture.Type}', expected 'image/png'");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<CheckResult> ReferencesPropertyAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("references");
+        try
+        {
+            var first = new Identity { StringIdentity = "ref-1" };
+            var second = new Identity { StringIdentity = "ref-2" };
+
+            var initial = new UpdateSituationObject
+            {
+                ActionTask = new UpdateActionTask
+                {
+                    Identity = identity,
+                    Reporter = context.Reporter,
+                    ReportingTime = ConformanceContext.Now(),
+                    ActionTaskResources = new UpdatePropertyReferences { Contents = { first, second } }
+                }
+            };
+            await context.AddOrUpdateAsync(token, initial).ConfigureAwait(false);
+
+            // A present property replaces the stored value; a list is no exception.
+            var replacement = new UpdateSituationObject
+            {
+                ActionTask = new UpdateActionTask
+                {
+                    Identity = identity,
+                    Reporter = context.Reporter,
+                    ReportingTime = ConformanceContext.Now(TimeSpan.FromSeconds(1)),
+                    ActionTaskResources = new UpdatePropertyReferences { Contents = { second } }
+                }
+            };
+            await context.AddOrUpdateAsync(token, replacement).ConfigureAwait(false);
+
+            var stored = await context.FindAnyAsync(identity, token).ConfigureAwait(false);
+            var contents = stored?.ActionTask?.ActionTaskResources?.Contents;
+            if (contents is null) return CheckResult.Fail("the references property was not stored");
+
+            if (contents.Count != 1)
+                return CheckResult.Fail(
+                    $"the list holds {contents.Count} identity/identities after being replaced with one - "
+                    + "the update appears to have been appended rather than applied");
+
+            return contents[0].Equals(second)
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"the list holds '{contents[0].StringIdentity}', expected 'ref-2'");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<CheckResult> DimensionPropertyAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("dimension");
+        try
+        {
+            await context.AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now(),
+                symbol => symbol.Dimension = new UpdatePropertyDimension { X = 10, Y = 20, Z = 30 }))
+                .ConfigureAwait(false);
+
+            var stored = await context.FindAsync(identity, token).ConfigureAwait(false);
+            if (stored?.Symbol?.Dimension is not { } dimension)
+                return CheckResult.Fail("the dimension property was not stored");
+
+            // Three components rather than one 'content' - the shape most likely to be
+            // half-copied by a merge written against the common case.
+            return dimension is { X: 10, Y: 20, Z: 30 }
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"came back as x={dimension.X}, y={dimension.Y}, z={dimension.Z}, expected 10/20/30");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<CheckResult> OverlayNestsObjectsAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("overlay-nesting");
+        var nestedIdentity = context.NewIdentity("overlay-nested-symbol");
+        try
+        {
+            var now = ConformanceContext.Now();
+            var update = new UpdateSituationObject
+            {
+                OverlayDocument = new UpdateOverlayDocument
+                {
+                    Identity = identity,
+                    Reporter = context.Reporter,
+                    ReportingTime = now,
+                    OverlayData = new UpdatePropertySituationObjects
+                    {
+                        Contents = { context.SymbolUpdate(nestedIdentity, now,
+                            symbol => symbol.Name = new UpdatePropertyString { Content = "NESTED" }) }
+                    }
+                }
+            };
+
+            var header = await context.AddOrUpdateAsync(token, update).ConfigureAwait(false);
+            if (!header.Success) return CheckResult.Fail($"the write was rejected: {header.ErrorMessage}");
+
+            var stored = await context.FindAnyAsync(identity, token).ConfigureAwait(false);
+            var contents = stored?.OverlayDocument?.OverlayData?.Contents;
+            if (contents is null || contents.Count == 0)
+                return CheckResult.Fail("the overlay stored no nested objects");
+
+            // The update model nests UpdateSituationObjects; the stored model nests
+            // whole SituationObjects, so the implementation has to materialize them.
+            var nested = contents[0];
+            if (nested.TypeCase != SituationObject.TypeOneofCase.Symbol)
+                return CheckResult.Fail($"the nested object came back as {nested.TypeCase}, expected Symbol");
+
+            return nested.Symbol.Name?.Content == "NESTED"
+                ? CheckResult.Pass()
+                : CheckResult.Fail(
+                    $"the nested object's name was '{nested.Symbol.Name?.Content}', expected 'NESTED' - "
+                    + "the nested update was stored but not materialized");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<CheckResult> StreamHeadersSuccessfulAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("stream-header");
+        try
+        {
+            var badHeader = await StreamWatcher.FindBadHeaderAsync(
+                context,
+                () => context.AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now())),
+                token).ConfigureAwait(false);
+
+            return badHeader is null
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"a streamed response carried an unsuccessful header: {badHeader}");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    // --- Expiry ------------------------------------------------------------------------
+
+    private static async Task<CheckResult> ExpiryExtensionPreventsDeletionAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("expiry-extended");
+        try
+        {
+            // Due to expire almost immediately...
+            await context.AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now(),
+                symbol => symbol.ExpiryTime = new UpdatePropertyTimestamp
+                {
+                    Content = ConformanceContext.Now(TimeSpan.FromSeconds(2))
+                })).ConfigureAwait(false);
+
+            // ...then pushed well out, which the contract explicitly permits.
+            await context.AddOrUpdateAsync(token, context.SymbolUpdate(
+                identity, ConformanceContext.Now(TimeSpan.FromSeconds(1)),
+                symbol => symbol.ExpiryTime = new UpdatePropertyTimestamp
+                {
+                    Content = ConformanceContext.Now(TimeSpan.FromHours(1))
+                })).ConfigureAwait(false);
+
+            // Long enough that an implementation sweeping on the original expiry would
+            // have acted by now.
+            await Task.Delay(ExpiryExtensionSettleTime, token).ConfigureAwait(false);
+
+            return await context.FindAsync(identity, token).ConfigureAwait(false) is not null
+                ? CheckResult.Pass()
+                : CheckResult.Fail("the object was expired anyway after its expiry_time was extended");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
+
+    // --- Identity and location kind coverage -------------------------------------------
+
+    /// <summary>
+    ///     Builds the "does this implementation handle this kind of Identity" check.
+    ///     Advisory for the same reason the object-type checks are: the contract
+    ///     declares four kinds, and marks the two integer ones "not for external use to
+    ///     create new objects", so an implementation accepting only some of them is not
+    ///     thereby non-conformant. What matters is that you find out before writing a
+    ///     client that uses UUIDs against a server that only understands strings.
+    /// </summary>
+    private static ConformanceCheck IdentityKindCheck(Google.Protobuf.Reflection.FieldDescriptor kind)
+    {
+        return new ConformanceCheck(
+            $"identity-kind-{SituationObjects.SlugOf(kind)}",
+            $"An object identified by {kind.Name} can be stored and read back",
+            "Identity is a oneof of four kinds. The contract does not require an implementation to accept "
+            + "all of them, and marks the integer kinds as not for external use. Reported as a capability.",
+            CheckSeverity.Advisory, true, false,
+            async (context, token) =>
+            {
+                var identity = SituationObjects.CreateIdentity(
+                    kind, $"conformance-{context.RunId}-{SituationObjects.SlugOf(kind)}");
+                try
+                {
+                    var header = await context
+                        .AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now()))
+                        .ConfigureAwait(false);
+                    if (!header.Success) return CheckResult.Fail($"the write was rejected: {header.ErrorMessage}");
+
+                    var stored = await context.FindAnyAsync(identity, token).ConfigureAwait(false);
+                    return stored is not null
+                        ? CheckResult.Pass()
+                        : CheckResult.Fail(
+                            "the write was accepted but no object with that identity came back - "
+                            + "the identity may have been stored under a different oneof field");
+                }
+                finally
+                {
+                    await context.TryCleanupAsync(identity).ConfigureAwait(false);
+                }
+            });
+    }
+
+    /// <summary>
+    ///     Builds the "does this implementation handle this kind of location" check.
+    ///     Same reasoning as the identity and object-type checks - a capability, not a
+    ///     verdict - but the one most worth reading: every other check in this file
+    ///     uses a point, and areas, corridors and routes are exactly what a tactical
+    ///     client needs and what a thin implementation leaves out.
+    /// </summary>
+    private static ConformanceCheck LocationKindCheck(Google.Protobuf.Reflection.FieldDescriptor kind)
+    {
+        return new ConformanceCheck(
+            $"location-{SituationObjects.SlugOf(kind)}",
+            $"A symbol located by {kind.Name} can be stored and read back",
+            "SymbolLocation is a oneof of nine location kinds. The contract does not require an "
+            + "implementation to accept all of them. Reported as a capability.",
+            CheckSeverity.Advisory, true, false,
+            async (context, token) =>
+            {
+                var identity = context.NewIdentity($"location-{SituationObjects.SlugOf(kind)}");
+                try
+                {
+                    var header = await context.AddOrUpdateAsync(token, context.SymbolUpdate(
+                        identity, ConformanceContext.Now(),
+                        symbol => symbol.Location = new UpdatePropertyLocation
+                        {
+                            Content = SituationObjects.CreateLocation(kind)
+                        })).ConfigureAwait(false);
+
+                    if (!header.Success) return CheckResult.Fail($"the write was rejected: {header.ErrorMessage}");
+
+                    var stored = await context.FindAsync(identity, token).ConfigureAwait(false);
+                    if (stored?.Symbol?.Location?.Content is not { } location)
+                        return CheckResult.Fail("the write was accepted but no location came back");
+
+                    // The oneof case is the whole point: an implementation that stored
+                    // the location as some other shape has silently changed the geometry.
+                    var actual = SymbolLocation.Descriptor.Oneofs[0].Accessor.GetCaseFieldDescriptor(location);
+                    return actual?.Name == kind.Name
+                        ? CheckResult.Pass()
+                        : CheckResult.Fail(
+                            $"the location came back as '{actual?.Name ?? "nothing"}', not '{kind.Name}'");
+                }
+                finally
+                {
+                    await context.TryCleanupAsync(identity).ConfigureAwait(false);
+                }
+            });
     }
 
     // --- Read-only probes ------------------------------------------------------------

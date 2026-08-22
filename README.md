@@ -113,13 +113,20 @@ conformance tool is the other direction — it *verifies* one:
 dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance -- --address http://their-host:5100
 ```
 
-33 checks covering merge, staleness, delete, streaming, tolerance and expiry semantics — plus one per situation
-object type, generated from the descriptors, because every other check uses `Symbol` and an implementation that
-handles nothing else would otherwise pass everything:
+57 checks covering merge, staleness, delete, streaming, tolerance, property shapes and expiry semantics — plus a
+generated check for every case of the contract's three capability oneofs. Every hand-written check uses
+`symbol` + `string_identity` + `point`, so without those an implementation handling only those three would pass
+everything:
 
 ```
 Object types accepted: 8 of 11
   not accepted: overlay-document, sketch-document, voice-message-document
+
+Identity kinds accepted: 2 of 4
+  not accepted: int32-identity, int64-identity
+
+Location kinds accepted: 4 of 9
+  not accepted: ellipse, fan, sketch-location, corridor, route-location
 ```
 
 Each check quotes the rule it enforces and carries a severity: **required** where the contract states the rule

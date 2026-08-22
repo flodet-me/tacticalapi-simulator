@@ -99,6 +99,52 @@ public sealed class ConformanceSuiteE2ETests
     }
 
     [Fact]
+    public async Task EveryOneofInTheContract_HasAGeneratedCheckPerCase()
+    {
+        // Three oneofs in the contract are places an implementation can quietly
+        // support a subset: the object type, the identity kind, and the location kind.
+        // Every hand-written check in the suite uses symbol + string_identity + point,
+        // so without these an implementation handling only those would pass everything.
+        // Generated from the descriptors, so a case added upstream is covered
+        // automatically rather than going unnoticed.
+        await using var factory = new SimulatorFactory();
+        var context = new ConformanceContext(
+            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+
+        var generated = SituationContractChecks.All
+            .Where(c => c.Id.StartsWith(ConformanceReportFormatter.ObjectTypePrefix, StringComparison.Ordinal)
+                        || c.Id.StartsWith(ConformanceReportFormatter.IdentityKindPrefix, StringComparison.Ordinal)
+                        || c.Id.StartsWith(ConformanceReportFormatter.LocationKindPrefix, StringComparison.Ordinal))
+            .ToList();
+
+        // Act
+        var reports = await ConformanceRunner.RunAsync(
+            context, generated, new RunSelection(Only: generated.Select(c => c.Id).ToHashSet()));
+
+        // Assert - one check per case of each oneof, all passing against the simulator.
+        Assert.Equal(SituationObjects.AllTypes.Count, CountWithPrefix(generated,
+            ConformanceReportFormatter.ObjectTypePrefix));
+        Assert.Equal(SituationObjects.IdentityKinds.Count, CountWithPrefix(generated,
+            ConformanceReportFormatter.IdentityKindPrefix));
+        Assert.Equal(SituationObjects.LocationKinds.Count, CountWithPrefix(generated,
+            ConformanceReportFormatter.LocationKindPrefix));
+        Assert.All(reports, r => Assert.Equal(CheckOutcome.Passed, r.Result.Outcome));
+
+        // And the capability summary reflects it.
+        Assert.Equal(11, ConformanceReportFormatter
+            .Capability(reports, ConformanceReportFormatter.ObjectTypePrefix).Accepted.Count);
+        Assert.Equal(9, ConformanceReportFormatter
+            .Capability(reports, ConformanceReportFormatter.LocationKindPrefix).Accepted.Count);
+        Assert.Equal(4, ConformanceReportFormatter
+            .Capability(reports, ConformanceReportFormatter.IdentityKindPrefix).Accepted.Count);
+    }
+
+    private static int CountWithPrefix(IEnumerable<ConformanceCheck> checks, string prefix)
+    {
+        return checks.Count(c => c.Id.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task EveryObjectTypeInTheContract_HasItsOwnCheck()
     {
         // Without these the whole suite could pass against an implementation that only
