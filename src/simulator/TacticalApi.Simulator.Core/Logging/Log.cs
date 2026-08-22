@@ -70,6 +70,14 @@ internal static partial class Log
         Message = "Delete processed {Total} request(s): {Applied} applied")]
     public static partial void ObjectsDeleted(this ILogger logger, int total, int applied);
 
+    [LoggerMessage(EventId = 1180, EventName = "WriteRejectedWhilePaused", Level = LogLevel.Debug,
+        Message = "Rejected a write batch of {Count} object(s): the simulator is paused")]
+    public static partial void WriteRejectedWhilePaused(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1190, EventName = "StoreCleared", Level = LogLevel.Information,
+        Message = "Situation reset: dropped {Count} situation object(s)")]
+    public static partial void StoreCleared(this ILogger logger, int count);
+
     // --- ExpirySweeper (1200-1299) -----------------------------------------------------
 
     [LoggerMessage(EventId = 1210, EventName = "SweepCompleted", Level = LogLevel.Information,
@@ -83,4 +91,26 @@ internal static partial class Log
     [LoggerMessage(EventId = 1230, EventName = "SweepFailed", Level = LogLevel.Error,
         Message = "Expiry sweep failed; retrying next interval")]
     public static partial void SweepFailed(this ILogger logger, Exception exception);
+
+    // --- Recording / replay (1300-1399) ------------------------------------------------
+
+    [LoggerMessage(EventId = 1310, EventName = "RecordingStarted", Level = LogLevel.Information,
+        Message = "Recording situation traffic to '{Path}'")]
+    public static partial void RecordingStarted(this ILogger logger, string path);
+
+    [LoggerMessage(EventId = 1320, EventName = "RecordingFrameWritten", Level = LogLevel.Trace,
+        Message = "Recorded frame {Sequence} ({Count} object(s)) at +{OffsetMs}ms")]
+    public static partial void RecordingFrameWritten(this ILogger logger, long sequence, int count, long offsetMs);
+
+    [LoggerMessage(EventId = 1330, EventName = "RecordingFailed", Level = LogLevel.Error,
+        Message = "Recording to '{Path}' failed; the recorder will stop")]
+    public static partial void RecordingFailed(this ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(EventId = 1340, EventName = "RecordingFrameSkipped", Level = LogLevel.Warning,
+        Message = "Skipped an unreadable frame at line {Line} of '{Path}'")]
+    public static partial void RecordingFrameSkipped(this ILogger logger, int line, string path);
+
+    [LoggerMessage(EventId = 1350, EventName = "RecordingClosed", Level = LogLevel.Information,
+        Message = "Recording '{Path}' closed after {Frames} frame(s)")]
+    public static partial void RecordingClosed(this ILogger logger, string path, long frames);
 }

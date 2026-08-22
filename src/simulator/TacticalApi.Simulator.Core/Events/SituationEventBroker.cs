@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Diagnostics;
 
 namespace TacticalApi.Simulator.Core.Events;
 
@@ -13,9 +14,19 @@ namespace TacticalApi.Simulator.Core.Events;
 ///     and are read per subscription, so config changes apply to new subscribers
 ///     without a restart (IOptionsMonitor).
 /// </summary>
-public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> options)
+public sealed class SituationEventBroker
 {
+    private readonly SimulatorMetrics _metrics;
+    private readonly IOptionsMonitor<SimulatorOptions> _options;
     private readonly ConcurrentDictionary<Guid, Channel<SituationObject>> _subscribers = new();
+
+    /// <summary>Creates the broker and publishes its subscriber-count gauge.</summary>
+    public SituationEventBroker(IOptionsMonitor<SimulatorOptions> options, SimulatorMetrics metrics)
+    {
+        _options = options;
+        _metrics = metrics;
+        _metrics.RegisterSubscriberCount(() => SubscriberCount);
+    }
 
     /// <summary>Number of active subscriptions.</summary>
     public int SubscriberCount => _subscribers.Count;
@@ -23,13 +34,20 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
     /// <summary>Opens a new subscriber channel; dispose the returned handle to unsubscribe.</summary>
     public Subscription Subscribe()
     {
-        var perf = options.CurrentValue.Performance;
-        var channel = Channel.CreateBounded<SituationObject>(new BoundedChannelOptions(perf.SubscriberChannelCapacity)
-        {
-            FullMode = perf.SubscriberChannelFullMode,
-            SingleReader = true,
-            SingleWriter = false
-        });
+        var perf = _options.CurrentValue.Performance;
+
+        // The itemDropped callback is the only way to observe a DropOldest/DropWrite
+        // discard at all: TryWrite still returns true when the channel silently threw
+        // an older item away, so without this the default full-mode loses events with
+        // nothing anywhere to show for it.
+        var channel = Channel.CreateBounded(
+            new BoundedChannelOptions(perf.SubscriberChannelCapacity)
+            {
+                FullMode = perf.SubscriberChannelFullMode,
+                SingleReader = true,
+                SingleWriter = false
+            },
+            (SituationObject _) => _metrics.RecordEventDropped());
 
         var id = Guid.NewGuid();
         _subscribers[id] = channel;
@@ -47,6 +65,7 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
 #pragma warning disable S3267
         foreach (var (_, channel) in _subscribers)
             foreach (var obj in changed)
+            {
                 // With DropOldest/DropWrite this never blocks; with Wait mode a
                 // full channel makes TryWrite fail and we fall back to a
                 // blocking write to apply backpressure to the publisher.
@@ -55,6 +74,9 @@ public sealed class SituationEventBroker(IOptionsMonitor<SimulatorOptions> optio
                     var writeTask = channel.Writer.WriteAsync(obj);
                     if (!writeTask.IsCompletedSuccessfully) writeTask.AsTask().GetAwaiter().GetResult();
                 }
+
+                _metrics.RecordEventPublished();
+            }
 #pragma warning restore S3267
     }
 

@@ -4,9 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
+using TacticalApi.Simulator.Core.Control;
+using TacticalApi.Simulator.Core.Diagnostics;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Ingest;
 using TacticalApi.Simulator.Core.Merging;
+using TacticalApi.Simulator.Core.Recording;
 using TacticalApi.Simulator.Core.Sources;
 using TacticalApi.Simulator.Core.Store;
 
@@ -38,7 +41,23 @@ public static class SimulatorCoreServiceCollectionExtensions
         services.AddSingleton(sp =>
             GrpcChannel.ForAddress(sp.GetRequiredService<IOptionsMonitor<GrpcIngestOptions>>().CurrentValue.Address));
         services.AddSingleton(sp => new Situation.SituationClient(sp.GetRequiredService<GrpcChannel>()));
-        services.AddSingleton<ISituationIngest, GrpcSituationIngest>();
+
+        // Recording decorates the ingest client instead of replacing it, so what
+        // gets recorded is exactly what goes on the wire (see RecordingOptions).
+        services.AddOptions<RecordingOptions>()
+            .Bind(configuration.GetSection(RecordingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton<GrpcSituationIngest>();
+        services.AddSingleton<ISituationIngest>(sp =>
+        {
+            var inner = sp.GetRequiredService<GrpcSituationIngest>();
+            if (!sp.GetRequiredService<IOptions<RecordingOptions>>().Value.Enabled) return inner;
+
+            // Returned from a factory, so the container still owns the instance and
+            // disposes it on shutdown - which is what closes the recording file.
+            return ActivatorUtilities.CreateInstance<RecordingSituationIngest>(sp, inner);
+        });
 
         return services;
     }
@@ -53,6 +72,8 @@ public static class SimulatorCoreServiceCollectionExtensions
     public static IServiceCollection AddSituationServer(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<SimulatorMetrics>();
+        services.AddSingleton<SimulationPause>();
         services.AddSingleton<SituationEventBroker>();
         services.AddSingleton<SituationStore>();
 

@@ -1,5 +1,10 @@
 # Extending the simulator
 
+Adding a data source or an object type is what this document is about. Two nearby things it is *not* about:
+
+- Anything driven by the protobuf descriptors (`SituationObjectToUpdate`, `ReplayTimestamps`) needs no work when a new object type appears — that is why they are written that way. See [Architecture](ARCHITECTURE.md#interface-semantics-implemented).
+- A new Host-side capability that isn't part of the contract (another fault, another control endpoint) belongs beside the existing ones in `Host/Faults/` or `Host/Control/`, never as a new RPC on the `Situation` service.
+
 ## Adding your own data source (e.g. an AIS ship tracker)
 
 [`Sources.OpenSky`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) is a working example of exactly this pattern (a live, HTTP-polling, single-object-type source) — read its README alongside this section. If your API naturally produces more than one kind of situation object (text, a location, a warning area, ...) from a single feed, [`Sources.Nws`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) is the example to look at instead — `ProduceAsync` just returns a mixed batch of `UpdateSituationObject`s built by hand alongside `TrackUpdateFactory.CreateSymbolUpdate(...)`, there's no special multi-type mechanism required.

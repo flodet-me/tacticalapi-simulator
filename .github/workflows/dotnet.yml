@@ -22,7 +22,7 @@ jobs:
   # (rather than separate format-check/sbom jobs) so there's exactly one
   # checkout/restore instead of three - the trade-off is that a formatting
   # typo now fails after the full pipeline runs instead of in ~15 seconds.
-  # Docker image build/scan/SBOM for each of the four executables lives in
+  # Docker image build/scan/SBOM for each of the five container executables lives in
   # the separate docker-images job below - those steps are self-contained
   # (see docs/CI.md) and don't need anything from here except the version
   # metadata this job computes.
@@ -224,6 +224,12 @@ jobs:
       - name: Publish adapter (Synthetic)
         run: dotnet publish src/adapter/TacticalApi.Simulator.Adapter.Synthetic --configuration Release --no-build --output ./publish/adapter-synthetic
 
+      - name: Publish adapter (Replay)
+        run: dotnet publish src/adapter/TacticalApi.Simulator.Adapter.Replay --configuration Release --no-build --output ./publish/adapter-replay
+
+      - name: Publish conformance tool
+        run: dotnet publish src/tools/TacticalApi.Simulator.Tool.Conformance --configuration Release --no-build --output ./publish/tool-conformance
+
       - name: Upload host artifact
         uses: actions/upload-artifact@v7
         with:
@@ -248,7 +254,19 @@ jobs:
           name: tacticalapi-simulator-adapter-synthetic-${{ steps.version.outputs.artifact_suffix }}
           path: ./publish/adapter-synthetic
 
-  # Builds, CVE-scans, and SBOMs each of the four container images (the Host
+      - name: Upload adapter artifact (Replay)
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-simulator-adapter-replay-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/adapter-replay
+
+      - name: Upload conformance tool artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tacticalapi-conformance-${{ steps.version.outputs.artifact_suffix }}
+          path: ./publish/tool-conformance
+
+  # Builds, CVE-scans, and SBOMs each of the five container images (the Host
   # server and every Adapter.*) in parallel via a matrix - each executable has
   # its own colocated Dockerfile (src/<project>/Dockerfile), not shared build
   # stages selected by --target, so a project's container build lives with
@@ -282,12 +300,21 @@ jobs:
           - name: adapter-synthetic
             dockerfile: src/adapter/TacticalApi.Simulator.Adapter.Synthetic/Dockerfile
             image: tacticalapi-simulator-adapter-synthetic
+          - name: adapter-replay
+            dockerfile: src/adapter/TacticalApi.Simulator.Adapter.Replay/Dockerfile
+            image: tacticalapi-simulator-adapter-replay
     steps:
       - name: Checkout (including TacticalAPI submodule)
         uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
+
+      - name: Set up build environment
+        # Only the host entry needs it, and only for the conformance step below -
+        # every other step in this job talks to Docker, not to the SDK.
+        if: matrix.name == 'host'
+        uses: ./.github/actions/setup-build-env
 
       - name: Build Docker image
         run: >
@@ -298,7 +325,7 @@ jobs:
           .
 
       - name: Smoke-test container
-        # Only the Host actually listens on a port - the three adapters are
+        # Only the Host actually listens on a port - the four adapters are
         # plain outbound-push console apps with no HTTP surface to hit here.
         # Runs on every build (PRs included), not just pushes to main - this
         # is a build-correctness check, not a publish step.
@@ -329,6 +356,36 @@ jobs:
 
           echo "Confirming /healthz is reachable from outside the container too."
           curl -sf http://localhost:4268/healthz
+
+          echo "Confirming /metrics scrapes."
+          curl -sf http://localhost:4268/metrics | grep -q tacticalapi_situation_objects
+
+      - name: Run the conformance suite against the built image
+        # The image, not the source tree: this is the artifact that ships, and the
+        # suite is the repository's own statement about what the contract requires -
+        # so a change that quietly breaks a contract rule fails the build here rather
+        # than being discovered by whoever integrates against the published image.
+        # Over gRPC-Web, the same transport the official Rheinmetall test client
+        # uses - so this also proves that path works end to end on the shipped
+        # image, which the smoke test above (plain HTTP /healthz) does not.
+        # Its own container on its own port, so it neither depends on nor
+        # inherits state from the smoke test's.
+        if: matrix.name == 'host'
+        run: |
+          set -euo pipefail
+          container_id=$(docker run -d -p 4269:4268 \
+            -e Simulator__ExpirySweepInterval=00:00:02 \
+            ${{ matrix.image }}:${{ needs.build-and-test.outputs.image_tag }})
+          trap 'docker logs "$container_id" || true; docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 24); do
+            if [ "$(docker inspect --format='{{.State.Health.Status}}' "$container_id")" = "healthy" ]; then break; fi
+            if [ "$i" -eq 24 ]; then echo "::error::Container never became healthy."; exit 1; fi
+            sleep 10
+          done
+
+          dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance --configuration Release -- \
+            --address http://localhost:4269 --grpc-web --include-slow
 
       - name: Log in to GHCR
         # Only push from main - never from a pull_request build (this

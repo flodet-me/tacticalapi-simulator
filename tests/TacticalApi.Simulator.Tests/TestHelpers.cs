@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Control;
+using TacticalApi.Simulator.Core.Diagnostics;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Merging;
 using TacticalApi.Simulator.Core.Store;
@@ -33,13 +35,27 @@ internal static class TestHelpers
         return (new Identity { StringIdentity = TestReporterId }, Timestamp.FromDateTimeOffset(reportingTime));
     }
 
-    internal static SituationStore CreateStore(SimulatorOptions? options = null, SituationEventBroker? broker = null)
+    /// <summary>A broker wired to a throwaway meter, for tests that don't assert on metrics.</summary>
+    internal static SituationEventBroker CreateBroker(
+        SimulatorOptions? options = null, SimulatorMetrics? metrics = null)
+    {
+        return new SituationEventBroker(Options(options), metrics ?? new SimulatorMetrics());
+    }
+
+    internal static SituationStore CreateStore(
+        SimulatorOptions? options = null,
+        SituationEventBroker? broker = null,
+        SimulationPause? pause = null,
+        SimulatorMetrics? metrics = null)
     {
         var monitor = Options(options);
+        metrics ??= new SimulatorMetrics();
         return new SituationStore(
             AllMergers.CreateAll(),
-            broker ?? new SituationEventBroker(monitor),
+            broker ?? new SituationEventBroker(monitor, metrics),
             monitor,
+            metrics,
+            pause ?? new SimulationPause(),
             NullLogger<SituationStore>.Instance);
     }
 

@@ -18,7 +18,7 @@ public sealed class SituationEventBrokerTests
     public async Task Subscriber_ReceivesPublishedChanges()
     {
         // Arrange
-        var broker = new SituationEventBroker(TestHelpers.Options());
+        var broker = TestHelpers.CreateBroker();
         var store = TestHelpers.CreateStore(broker: broker);
         using var subscription = broker.Subscribe();
 
@@ -34,7 +34,7 @@ public sealed class SituationEventBrokerTests
     public void Dispose_RemovesSubscriber()
     {
         // Arrange
-        var broker = new SituationEventBroker(TestHelpers.Options());
+        var broker = TestHelpers.CreateBroker();
         var subscription = broker.Subscribe();
         Assert.Equal(1, broker.SubscriberCount);
 
@@ -49,7 +49,7 @@ public sealed class SituationEventBrokerTests
     public void Publish_WithoutSubscribers_DoesNotThrow()
     {
         // Arrange
-        var broker = new SituationEventBroker(TestHelpers.Options());
+        var broker = TestHelpers.CreateBroker();
 
         // Act
         var exception = Record.Exception(() => broker.Publish([new SituationObject()]));
@@ -67,7 +67,7 @@ public sealed class SituationEventBrokerTests
         var options = new SimulatorOptions();
         options.Performance.SubscriberChannelCapacity = 1;
         options.Performance.SubscriberChannelFullMode = BoundedChannelFullMode.Wait;
-        var broker = new SituationEventBroker(TestHelpers.Options(options));
+        var broker = TestHelpers.CreateBroker(options);
         using var subscription = broker.Subscribe();
 
         broker.Publish([Symbol("first")]);

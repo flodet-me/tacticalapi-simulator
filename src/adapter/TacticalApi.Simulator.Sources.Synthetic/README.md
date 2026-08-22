@@ -1,9 +1,10 @@
 # TacticalApi.Simulator.Sources.Synthetic
 
-Four fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
-picture, a scripted mini scenario that exercises every situation object type in the TacticalAPI contract, and two
+Five fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
+picture, a scripted mini scenario that exercises every situation object type in the TacticalAPI contract, two
 scenarios modeling real military operations end to end — a convoy escort and a combat outpost defense — with
-friendly/hostile forces and engagements resolved probabilistically rather than scripted.
+friendly/hostile forces and engagements resolved probabilistically rather than scripted, and a load generator that
+makes no attempt at plausibility and simply moves as many objects as you ask for.
 
 `GeoMath.cs` (destination-point projection, haversine distance, point-in-polygon containment) and
 `LanchesterModel.cs` (Lanchester's Square Law attrition) are shared by every scenario below that needs real-world
@@ -187,3 +188,57 @@ A persistent `NatoMessageDocument` SITREP (posture + latest contact) refreshes e
 | `ContactCooldown`                        | `00:08:00`| minimum time between contacts, range 30s–4h                      |
 | `Seed`                                   | `4077`    | deterministic perimeter/OP layout and contact rolls              |
 | `ReporterId`                             | `SIM-COP` |                                                                  |
+
+## `LoadGeneratorSource`
+
+Config section: `Adapter:LoadGenerator`, bound to `LoadGeneratorOptions`. **Disabled by default.**
+
+The others simulate a situation; this one applies pressure. `Simulator:Performance` on the Host has always had
+knobs — subscriber channel capacity, overflow mode, stream batch size, object cap — with nothing in the repository
+able to reach the conditions they govern. Running this against the Host with a subscriber attached is what makes
+`tacticalapi_subscriber_events_dropped_total` move, and therefore what makes those knobs tunable rather than
+guessable.
+
+```bash
+# 4000 objects, 500 reported every 100ms, against a Host with a small subscriber buffer.
+Adapter__LoadGenerator__Enabled=true Adapter__LoadGenerator__ObjectCount=4000 \
+Adapter__LoadGenerator__BatchSize=500 Adapter__LoadGenerator__UpdateInterval=00:00:00.100 \
+Adapter__SyntheticScenario__Enabled=false \
+  dotnet run --project src/adapter/TacticalApi.Simulator.Adapter.Synthetic
+
+curl -s http://localhost:4268/metrics | grep subscriber_events
+```
+
+### How it works
+
+1. Objects are laid out on a square grid around the configured centre, so the map UI shows the load as a block
+   rather than one overlapping dot.
+2. Each cycle reports a rolling window of `BatchSize` objects, advancing through the population of `ObjectCount` and
+   wrapping around. Reporting a subset rather than the whole population is both what real sources do and what keeps
+   the two knobs independent: `BatchSize` sets how big each message is, `UpdateInterval` how often one is sent, and
+   `ObjectCount` how large the situation grows — which would otherwise be capped by whatever fits in a single
+   message (`Simulator:Performance:MaxReceiveMessageSizeMb` on the receiving end).
+3. Every object drifts slightly each cycle. A load generator whose objects never moved would have its updates
+   merged away as no-ops by any correct implementation, and would measure nothing.
+4. Positions are a deterministic function of index and elapsed time — no RNG at all — so two runs with the same
+   settings produce the same load, and a throughput comparison between them measures the change under test rather
+   than the weather.
+
+### Options
+
+| Key                | Default             | Notes                                                          |
+|--------------------|---------------------|----------------------------------------------------------------|
+| `Enabled`          | `false`             | a deliberate stress tool, not a demo                            |
+| `ObjectCount`      | `10000`             | population size, range 1–1,000,000                              |
+| `BatchSize`        | `1000`              | objects reported per cycle; this is what bounds message size    |
+| `UpdateInterval`   | `00:00:01`          | range 10ms–10min                                                |
+| `CenterLatitude`   | `53.08`             |                                                                 |
+| `CenterLongitude`  | `8.8`               |                                                                 |
+| `SpreadDegrees`    | `1.0`               | half-width of the square the grid covers, range 0.001–90        |
+| `TrackTimeToLive`  | `00:05:00`          | short values also exercise the expiry sweeper under load        |
+| `SymbolCode`       | `SUGP-----------`   |                                                                 |
+| `SymbolCatalog`    | `Mil2525C`          |                                                                 |
+| `ReporterId`       | `SIM-LOAD`          |                                                                 |
+
+Covered by `LoadGeneratorSourceTests` (windowing and wrap-around, movement between cycles, determinism, clean
+ingest into the store).

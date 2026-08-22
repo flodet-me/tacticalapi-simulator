@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Control;
+using TacticalApi.Simulator.Core.Diagnostics;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Identities;
 using TacticalApi.Simulator.Core.Ingest;
@@ -24,27 +26,61 @@ namespace TacticalApi.Simulator.Core.Store;
 ///     through <see cref="ISituationIngest" />, a real gRPC client, same as any
 ///     other external caller.
 /// </summary>
-public sealed class SituationStore(
-    IEnumerable<ISituationObjectMerger> mergers,
-    SituationEventBroker broker,
-    IOptionsMonitor<SimulatorOptions> options,
-    ILogger<SituationStore> logger)
+public sealed class SituationStore
 {
+    private readonly SituationEventBroker _broker;
     private readonly Dictionary<string, Timestamp> _lastReportingTime = [];
-    private readonly FrozenMergerLookup _mergers = new(mergers);
+    private readonly ILogger<SituationStore> _logger;
+    private readonly FrozenMergerLookup _mergers;
+    private readonly SimulatorMetrics _metrics;
     private readonly ConcurrentDictionary<string, SituationObject> _objects = new();
+    private readonly IOptionsMonitor<SimulatorOptions> _options;
+    private readonly SimulationPause _pause;
     private readonly Lock _writeGate = new();
+
+    /// <summary>Creates the store and publishes its object-count gauge.</summary>
+    public SituationStore(
+        IEnumerable<ISituationObjectMerger> mergers,
+        SituationEventBroker broker,
+        IOptionsMonitor<SimulatorOptions> options,
+        SimulatorMetrics metrics,
+        SimulationPause pause,
+        ILogger<SituationStore> logger)
+    {
+        _mergers = new FrozenMergerLookup(mergers);
+        _broker = broker;
+        _options = options;
+        _metrics = metrics;
+        _pause = pause;
+        _logger = logger;
+        _metrics.RegisterSituationObjectCount(() => Count);
+    }
 
     /// <summary>Number of situation objects currently held (including soft-deleted ones).</summary>
     public int Count => _objects.Count;
 
-    /// <summary>Applies add/update messages. Returns per-batch success.</summary>
+    /// <summary>
+    ///     Applies add/update messages. Returns per-batch success. Rejected while
+    ///     the simulator is paused (see <see cref="SimulationPause" />).
+    /// </summary>
     public IngestResult AddOrUpdate(IReadOnlyList<UpdateSituationObject> updates)
     {
+        var result = AddOrUpdateCore(updates);
+        if (!result.Success) _metrics.RecordRejectedBatch();
+        return result;
+    }
+
+    private IngestResult AddOrUpdateCore(IReadOnlyList<UpdateSituationObject> updates)
+    {
         if (updates.Count == 0) return IngestResult.Ok;
+        if (_pause.IsPaused)
+        {
+            _logger.WriteRejectedWhilePaused(updates.Count);
+            return IngestResult.Fail(SimulationPause.PausedMessage);
+        }
 
         var changed = new List<SituationObject>(updates.Count);
-        var maxObjects = options.CurrentValue.Performance.MaxSituationObjects;
+        var maxObjects = _options.CurrentValue.Performance.MaxSituationObjects;
         var staleCount = 0;
 
         lock (_writeGate)
@@ -53,7 +89,7 @@ public sealed class SituationStore(
             {
                 if (!_mergers.TryGet(update.TypeCase, out var merger))
                 {
-                    logger.UnsupportedType(update.TypeCase.ToString());
+                    _logger.UnsupportedType(update.TypeCase.ToString());
                     return IngestResult.Fail(
                         $"Situation object type '{update.TypeCase}' is not supported by this simulator. " +
                         "Register an ISituationObjectMerger for it to add support.");
@@ -63,21 +99,21 @@ public sealed class SituationStore(
                 var key = IdentityKey.TryCreate(identity);
                 if (key is null)
                 {
-                    logger.MissingIdentity();
+                    _logger.MissingIdentity();
                     return IngestResult.Fail("Update is missing the required identity.");
                 }
 
                 var reportingTime = merger.GetReportingTime(update);
                 if (reportingTime is null)
                 {
-                    logger.MissingReportingTime(key);
+                    _logger.MissingReportingTime(key);
                     return IngestResult.Fail($"Update '{key}' is missing the required reporting_time.");
                 }
 
                 var exists = _objects.TryGetValue(key, out var current);
                 if (!exists && _objects.Count >= maxObjects)
                 {
-                    logger.ObjectLimitReached(maxObjects, key);
+                    _logger.ObjectLimitReached(maxObjects, key);
                     return IngestResult.Fail(
                         $"Object limit of {maxObjects} reached (Simulator:Performance:MaxSituationObjects).");
                 }
@@ -86,7 +122,7 @@ public sealed class SituationStore(
                 if (_lastReportingTime.TryGetValue(key, out var last) &&
                     reportingTime.ToDateTimeOffset() < last.ToDateTimeOffset())
                 {
-                    logger.UpdateIgnoredStale(key);
+                    _logger.UpdateIgnoredStale(key);
                     staleCount++;
                     continue;
                 }
@@ -98,17 +134,33 @@ public sealed class SituationStore(
             }
         }
 
-        logger.BatchProcessed(updates.Count, changed.Count, staleCount);
+        _logger.BatchProcessed(updates.Count, changed.Count, staleCount);
+        _metrics.RecordBatch(changed.Count, staleCount);
 
-        if (changed.Count > 0) broker.Publish(changed);
+        if (changed.Count > 0) _broker.Publish(changed);
 
         return IngestResult.Ok;
     }
 
-    /// <summary>Marks objects as deleted.</summary>
+    /// <summary>
+    ///     Marks objects as deleted. Rejected while the simulator is paused
+    ///     (see <see cref="SimulationPause" />).
+    /// </summary>
     public IngestResult Delete(IReadOnlyList<DeleteSituationObject> deletes)
     {
+        var result = DeleteCore(deletes);
+        if (!result.Success) _metrics.RecordRejectedBatch();
+        return result;
+    }
+
+    private IngestResult DeleteCore(IReadOnlyList<DeleteSituationObject> deletes)
+    {
         if (deletes.Count == 0) return IngestResult.Ok;
+        if (_pause.IsPaused)
+        {
+            _logger.WriteRejectedWhilePaused(deletes.Count);
+            return IngestResult.Fail(SimulationPause.PausedMessage);
+        }
 
         var changed = new List<SituationObject>(deletes.Count);
 
@@ -119,7 +171,7 @@ public sealed class SituationStore(
                 var key = IdentityKey.TryCreate(delete.Identity);
                 if (key is null)
                 {
-                    logger.MissingIdentity();
+                    _logger.MissingIdentity();
                     return IngestResult.Fail("Delete is missing the required identity.");
                 }
 
@@ -137,11 +189,34 @@ public sealed class SituationStore(
             }
         }
 
-        logger.ObjectsDeleted(deletes.Count, changed.Count);
+        _logger.ObjectsDeleted(deletes.Count, changed.Count);
+        _metrics.RecordDeleted(changed.Count);
 
-        if (changed.Count > 0) broker.Publish(changed);
+        if (changed.Count > 0) _broker.Publish(changed);
 
         return IngestResult.Ok;
+    }
+
+    /// <summary>
+    ///     Drops every object, returning the situation to its just-started, empty
+    ///     state. Subscribers are NOT told the objects were deleted: a reset is a
+    ///     restart of the situation, not a bulk delete of it, and announcing tens of
+    ///     thousands of synthetic deletes would be indistinguishable to a client from
+    ///     the real thing. A client that wants a clean view reconnects (or calls
+    ///     GetSituationObjects) and gets an empty snapshot.
+    ///     Exposed for the Host's control endpoints; nothing in the TacticalAPI
+    ///     contract can reach it.
+    /// </summary>
+    public int Clear()
+    {
+        lock (_writeGate)
+        {
+            var count = _objects.Count;
+            _objects.Clear();
+            _lastReportingTime.Clear();
+            _logger.StoreCleared(count);
+            return count;
+        }
     }
 
     /// <summary>Snapshot of all non-deleted objects (per GetSituationObjects contract).</summary>
@@ -161,6 +236,10 @@ public sealed class SituationStore(
     /// </summary>
     public int SweepExpired(DateTimeOffset now, string reporterId)
     {
+        // A paused situation is frozen, expiry included - otherwise objects would
+        // keep vanishing underneath whoever paused it to look at them.
+        if (_pause.IsPaused) return 0;
+
         List<DeleteSituationObject>? deletes = null;
         var nowTs = Timestamp.FromDateTimeOffset(now);
 
@@ -184,6 +263,7 @@ public sealed class SituationStore(
         if (deletes is null) return 0;
 
         Delete(deletes);
+        _metrics.RecordExpired(deletes.Count);
         return deletes.Count;
     }
 

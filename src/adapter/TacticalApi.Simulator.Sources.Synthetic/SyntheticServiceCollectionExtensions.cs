@@ -7,7 +7,7 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 /// <summary>DI registration for the fully offline synthetic simulation sources.</summary>
 public static class SyntheticServiceCollectionExtensions
 {
-    /// <summary>Registers options and hosted runners for both the air-track and scenario sources.</summary>
+    /// <summary>Registers options and hosted runners for every offline source: air tracks, each scenario, and the load generator.</summary>
     public static IServiceCollection AddSyntheticSources(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<SyntheticAirTrackOptions>()
@@ -27,6 +27,12 @@ public static class SyntheticServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.AddSimulationSource<ConvoyEscortSource>();
+
+        services.AddOptions<LoadGeneratorOptions>()
+            .Bind(configuration.GetSection(LoadGeneratorOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<LoadGeneratorSource>();
 
         services.AddOptions<CombatOutpostDefenseOptions>()
             .Bind(configuration.GetSection(CombatOutpostDefenseOptions.SectionName))

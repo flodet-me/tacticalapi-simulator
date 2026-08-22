@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>tacticalapi-conformance</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\simulator\TacticalApi.Simulator.Contracts\TacticalApi.Simulator.Contracts.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client"/>
+    <PackageReference Include="Grpc.Net.Client.Web"/>
+  </ItemGroup>
+
+</Project>

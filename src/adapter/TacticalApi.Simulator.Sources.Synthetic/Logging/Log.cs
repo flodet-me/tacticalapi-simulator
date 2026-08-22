@@ -34,4 +34,10 @@ internal static partial class Log
     [LoggerMessage(EventId = 3440, EventName = "PatrolTaskStatusChanged", Level = LogLevel.Debug,
         Message = "Synthetic scenario patrol task status changed to {Status}")]
     public static partial void PatrolTaskStatusChanged(this ILogger logger, string status);
+
+    // --- LoadGeneratorSource (3350-3399) -----------------------------------------------
+
+    [LoggerMessage(EventId = 3350, EventName = "LoadObjectsProduced", Level = LogLevel.Trace,
+        Message = "Load generator produced {Count} object update(s)")]
+    public static partial void LoadObjectsProduced(this ILogger logger, int count);
 }

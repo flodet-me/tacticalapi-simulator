@@ -24,6 +24,9 @@ dotnet test tests/TacticalApi.Simulator.Tests/TacticalApi.Simulator.Tests.csproj
 # Single test (xunit filter, works with dotnet test too)
 dotnet test tests/TacticalApi.Simulator.Tests --filter "FullyQualifiedName~SyntheticScenarioSourceTests"
 
+# Check any TacticalAPI implementation against the contract (writes to its situation)
+dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance -- --address http://localhost:5100 --include-slow
+
 # Same coverage gate as CI
 dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 
@@ -47,6 +50,10 @@ Running the app itself (Host + adapters, ports, map UI, grpcurl examples) is doc
 - **Options are `IOptionsMonitor`, hot-reloadable.** Bound with `ValidateDataAnnotations().ValidateOnStart()`, re-read every cycle — no restart needed to pick up an edited `appsettings.json`. If the file is missing at startup, `AppSettingsBootstrap` (Core) regenerates it from the executable's own embedded copy.
 - **Dependency direction:** `Host → Core → Contracts`, and separately `Adapter.* → Sources.* → Core → Contracts`. The Host never references any `Sources.*` project; no `Adapter.*` project references another.
 - **Adding a data source or a new situation object type**: follow [docs/EXTENDING.md](docs/EXTENDING.md) exactly — it has working code templates for both (`ISimulationSource` + adapter project shape; `ISituationObjectMerger` for a new oneof case).
+- **Nothing that isn't in the contract goes on the `Situation` service.** Fault injection (`Simulator:Faults`, `Host/Faults/`), the control endpoints (`Simulator:Control`, `Host/Control/`) and `/metrics` are all Host features on plain HTTP paths. Adding an RPC would let a client depend on something no real implementation offers. New capability of that kind belongs beside the existing ones, never as a new `rpc`.
+- **Two places are descriptor-driven, on purpose.** `SituationObjectToUpdate` (Core, turns a stored object back into the update that recreates it — the basis of stream-side recording) and `ReplayTimestamps` walk the protobuf descriptors instead of switching over the eleven object types, because the stored and update message families mirror each other field for field and a hand-written mapping would silently rot when the upstream contract grows a field. Don't "simplify" them into switches. `SituationObjectToUpdateTests` round-trips all eleven types through store → update → store and is what keeps them honest.
+- **Record/replay is outside the store.** `SituationStore` stays persistence-free; recording happens either as an `ISituationIngest` decorator in an adapter (`Adapter:Recording`, lossless) or as a subscriber (`Adapter:Recorder`, works against any implementation). Format: one JSON frame per line, objects in canonical protobuf JSON (`Core/Recording/RecordingFormat.cs`) — note `JsonFormatter.Default`, since any `WithIndentation(...)` switches the formatter to multi-line and breaks the one-frame-per-line invariant.
+- **Metrics filter by meter instance, not meter name.** `SimulatorMetrics` is a plain BCL `Meter` (no OpenTelemetry dependency); `MetricsCollector` and the test recorder both match on `ReferenceEquals(instrument.Meter, metrics.Meter)`. Several simulators share the E2E test process, and name-based filtering made each one's scrape include every other one's numbers.
 
 ## Conventions
 

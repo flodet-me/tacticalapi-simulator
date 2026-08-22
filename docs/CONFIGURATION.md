@@ -12,6 +12,20 @@ The Host runs only the simulated `Situation` gRPC service, store, and map UI - i
 "Simulator": {
   "ReporterId": "TacticalAPI-Simulator",
   "ExpirySweepInterval": "00:00:10",
+  "Control": {
+    "Enabled": true                        // false hides /api/control/* (404)
+  },
+  "Faults": {
+    "Enabled": false,                      // master switch - nothing below applies without it
+    "Seed": null,                          // set to make a flaky run reproducible
+    "Latency": "00:00:00",                 // added to every RPC
+    "LatencyJitter": "00:00:00",           // extra delay drawn per call from [0, this]
+    "RpcErrorProbability": 0.0,            // the call itself faults
+    "RpcStatusCode": "Unavailable",        // ...with this status
+    "ErrorHeaderProbability": 0.0,         // a write returns header.success = false
+    "DropWriteProbability": 0.0,           // a write is acknowledged and discarded
+    "StreamAbortAfter": null               // kill each subscription this long after it opens
+  },
   "MapUi": {
     "Enabled": true,                       // false hides /ui, /api/objects and /api/config (404)
     "RefreshInterval": "00:00:02",         // how often /ui polls /api/objects
@@ -29,7 +43,28 @@ The Host runs only the simulated `Situation` gRPC service, store, and map UI - i
 }
 ```
 
-Performance-relevant behavior is configuration, not code: channel sizes, overflow strategy (`DropOldest` keeps streams fresh for state-based tracks; `Wait` applies backpressure to producers), batch sizes and object caps. The host additionally runs with Server GC.
+Performance-relevant behavior is configuration, not code: channel sizes, overflow strategy (`DropOldest` keeps streams fresh for state-based tracks; `Wait` applies backpressure to producers), batch sizes and object caps. The host additionally runs with Server GC. What those knobs are actually doing is visible on `/metrics` — in particular `tacticalapi_subscriber_events_dropped_total`, which is what `DropOldest` costs you.
+
+### `Simulator:Faults`
+
+Makes the simulator misbehave on purpose, so a client can be proven to survive a server that is slow, flaky, rejecting writes, or dropping long-lived streams. Every probability is an independent per-call draw in `[0, 1]`; `0` disables that fault, and nothing applies at all unless `Enabled` is set — a stray probability left in a config file can't quietly degrade a normal run.
+
+Because these are `IOptionsMonitor` options like everything else, faults can be switched on and off **while a client stays connected**, which is the point: you watch it react instead of restarting into a differently-broken server.
+
+```bash
+# Make every write fail in a way that doesn't throw, without restarting the Host.
+jq '.Simulator.Faults.Enabled = true | .Simulator.Faults.ErrorHeaderProbability = 1.0' \
+  src/simulator/TacticalApi.Simulator.Host/appsettings.json > tmp && mv tmp \
+  src/simulator/TacticalApi.Simulator.Host/appsettings.json
+```
+
+`ErrorHeaderProbability` is the one worth reaching for first: the RPC succeeds, so nothing throws, and the error exists only in a field many clients never read. `DropWriteProbability` is its quieter sibling — acknowledged, never applied, detectable only by reconciling afterwards. Every fault that fires is counted on `tacticalapi_faults_injected_total` tagged by kind, so a confusing client-side failure can be traced back to the fault that caused it rather than mistaken for a real bug.
+
+Set `Seed` to make a run reproducible; leave it null for a different sequence each time.
+
+### `Simulator:Control`
+
+Gates `/api/control/*` (see [README](../README.md#control-endpoints)). On by default, consistent with the map UI: this simulator has no security features at all by design, so gating a control surface behind a flag would be security theatre rather than security. Turn it off when the situation must only be driveable through the TacticalAPI contract itself — a conformance run, or a demo nobody should be able to reset from a browser tab.
 
 ## Each adapter (`src/adapter/TacticalApi.Simulator.Adapter.*/appsettings.json`)
 
@@ -40,9 +75,25 @@ Every `Adapter.*` executable's own `appsettings.json` has just two things: where
   "Ingest": {
     "Address": "http://localhost:5100"  // where this adapter pushes updates - see below
   },
+  "Recording": {                        // available in EVERY adapter - see below
+    "Enabled": false,
+    "Path": "recordings/recording.jsonl"
+  },
   "OpenSky": { /* only present in Adapter.OpenSky's appsettings.json - see Sources.OpenSky's README */ }
 }
 ```
+
+### `Adapter:Recording` (every adapter)
+
+Turns any adapter into a recorder: with this on, every batch its sources push is also appended to a replayable `.jsonl` recording on the way out. It decorates the ingest client rather than being a source of its own, so it captures whatever that adapter produces — OpenSky, NWS, a scenario — with no per-source support needed and nothing lost: what lands in the file is exactly what went on the wire.
+
+```bash
+# An offline OpenSky replay, captured from a live run.
+Adapter__Recording__Enabled=true Adapter__Recording__Path=recordings/opensky.jsonl \
+  dotnet run --project src/adapter/TacticalApi.Simulator.Adapter.OpenSky
+```
+
+The file is truncated on start, so each run produces one self-contained recording. Unlike most options here this one is read once at startup — swapping the sink under a half-written recording would produce two useless files instead of one good one. To record a situation you *don't* produce (a third-party implementation, or one fed by clients you don't control), use `Adapter:Recorder` instead — see [`Sources.Replay`'s README](../src/adapter/TacticalApi.Simulator.Sources.Replay/README.md) for which to reach for.
 
 `Ingest:Address` is the gRPC endpoint the adapter pushes updates to (see [Architecture](ARCHITECTURE.md) — each adapter is a real `Situation.SituationClient` gRPC client, not an in-process shortcut). It defaults to the Host's own native gRPC endpoint, so running the Host plus any adapter keeps working out of the box, but it's just a config value: point it at any other implementation of the TacticalAPI contract and that one adapter drives that instead, independently of the others. If the endpoint is unreachable, the adapter logs `IngestFailed`/retries each cycle rather than crashing.
 
@@ -51,6 +102,7 @@ Each source's own settings (intervals, symbol codes, bounding boxes, ...) are do
 - [`Sources.OpenSky/README.md`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) — live OpenSky Network flight tracker (`Adapter.OpenSky`)
 - [`Sources.Synthetic/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md) — offline air-track picture and the all-object-types scenario (`Adapter.Synthetic`)
 - [`Sources.Nws/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) — live US National Weather Service alerts (`Adapter.Nws`)
+- [`Sources.Replay/README.md`](../src/adapter/TacticalApi.Simulator.Sources.Replay/README.md) — the situation recorder and the replay player (`Adapter.Replay`); config sections `Adapter:Recorder` and `Adapter:Replay`
 
 ## Logging (every executable)
 

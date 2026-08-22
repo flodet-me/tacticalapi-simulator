@@ -7,7 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\simulator\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
     <ProjectReference Include="..\..\src\simulator\TacticalApi.Simulator.Host\TacticalApi.Simulator.Host.csproj"/>
+    <ProjectReference Include="..\..\src\adapter\TacticalApi.Simulator.Sources.Replay\TacticalApi.Simulator.Sources.Replay.csproj"/>
     <ProjectReference Include="..\..\src\adapter\TacticalApi.Simulator.Sources.Synthetic\TacticalApi.Simulator.Sources.Synthetic.csproj"/>
+    <ProjectReference Include="..\..\src\tools\TacticalApi.Simulator.Tool.Conformance\TacticalApi.Simulator.Tool.Conformance.csproj"/>
   </ItemGroup>
 
   <ItemGroup>

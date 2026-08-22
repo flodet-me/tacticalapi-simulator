@@ -1,9 +1,13 @@
 using Microsoft.Extensions.Options;
 using TacticalApi.Simulator.Core;
 using TacticalApi.Simulator.Core.Configuration;
+using TacticalApi.Simulator.Core.Control;
 using TacticalApi.Simulator.Core.Events;
 using TacticalApi.Simulator.Core.Logging;
 using TacticalApi.Simulator.Core.Store;
+using TacticalApi.Simulator.Host.Control;
+using TacticalApi.Simulator.Host.Diagnostics;
+using TacticalApi.Simulator.Host.Faults;
 using TacticalApi.Simulator.Host.Services;
 using TacticalApi.Simulator.Host.Web;
 
@@ -25,8 +29,25 @@ builder.Services.AddOptions<MapUiOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<ControlOptions>()
+    .Bind(builder.Configuration.GetSection(ControlOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<FaultInjectionOptions>()
+    .Bind(builder.Configuration.GetSection(FaultInjectionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<FaultInjector>();
+builder.Services.AddSingleton<MetricsCollector>();
+
 builder.Services.AddGrpc(options =>
 {
+    // Latency and RPC-level faults apply to every call, so they go on the pipeline
+    // rather than into the service (see FaultInjectionInterceptor).
+    options.Interceptors.Add<FaultInjectionInterceptor>();
+
     // No security features by request: no auth interceptors, no TLS below.
     var performance = builder.Configuration
         .GetSection(SimulatorOptions.SectionName)
@@ -41,6 +62,11 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+// Built eagerly: the collector only sees measurements taken after its listener
+// starts, so resolving it lazily on the first scrape would silently lose every
+// count from before someone happened to look.
+_ = app.Services.GetRequiredService<MetricsCollector>();
+
 // gRPC-Web (HTTP/1.1) support so the official Rheinmetall test client - which
 // uses GrpcWebHandler against http://localhost:4268 - works unmodified.
 app.UseGrpcWeb(new GrpcWebOptions { DefaultEnabled = true });
@@ -48,15 +74,27 @@ app.UseGrpcWeb(new GrpcWebOptions { DefaultEnabled = true });
 app.MapGrpcService<SituationGrpcService>().EnableGrpcWeb();
 app.MapGrpcReflectionService();
 app.MapHealthChecks("/healthz");
+
+// Scrapeable metrics for the knobs Simulator:Performance exposes - above all the
+// subscriber-event drops that DropOldest would otherwise discard unobserved.
+app.MapGet("/metrics", (MetricsCollector collector) =>
+    Results.Text(PrometheusFormatter.Format(collector.Collect()), PrometheusFormatter.ContentType));
+
+// Drive the simulator itself (pause/reset/inject). Not part of the Situation
+// service by design - see ControlEndpoints.
+app.MapControlEndpoints();
+
 app.MapGet("/", (SituationStore store,
     SituationEventBroker broker,
+    SimulationPause pause,
     IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
     {
         service = "TacticalAPI Simulator",
         proto = "rheinmetall.tactical_api.v0.Situation",
         situationObjects = store.Count,
         subscribers = broker.SubscriberCount,
-        reporterId = options.CurrentValue.ReporterId
+        reporterId = options.CurrentValue.ReporterId,
+        paused = pause.IsPaused
     }));
 
 // Read-only map GUI: static files under wwwroot/ui, backed by a JSON snapshot endpoint.

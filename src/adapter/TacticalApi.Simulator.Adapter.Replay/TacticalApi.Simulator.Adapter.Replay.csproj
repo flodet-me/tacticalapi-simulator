@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\simulator\TacticalApi.Simulator.Core\TacticalApi.Simulator.Core.csproj"/>
+    <ProjectReference Include="..\TacticalApi.Simulator.Sources.Replay\TacticalApi.Simulator.Sources.Replay.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="appsettings.Development.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Embedded alongside the usual Content copy so AppSettingsBootstrap can
+         regenerate appsettings.json from this exact file if it's ever missing
+         next to the running executable. -->
+    <EmbeddedResource Include="appsettings.json"/>
+  </ItemGroup>
+
+</Project>
