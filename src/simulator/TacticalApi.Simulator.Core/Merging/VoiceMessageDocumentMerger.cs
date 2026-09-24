@@ -45,7 +45,7 @@ public sealed class VoiceMessageDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             VoiceMessageDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

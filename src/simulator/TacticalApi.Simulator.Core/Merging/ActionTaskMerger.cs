@@ -50,7 +50,7 @@ public sealed class ActionTaskMerger : ISituationObjectMerger
         return new SituationObject
         {
             ActionTask = task,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

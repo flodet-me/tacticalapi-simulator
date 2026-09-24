@@ -47,7 +47,7 @@ public sealed class TextDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             TextDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

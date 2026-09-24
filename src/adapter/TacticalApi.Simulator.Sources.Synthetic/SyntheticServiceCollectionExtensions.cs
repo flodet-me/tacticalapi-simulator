@@ -40,6 +40,18 @@ public static class SyntheticServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSimulationSource<CombatOutpostDefenseSource>();
 
+        services.AddOptions<GeometryShowcaseOptions>()
+            .Bind(configuration.GetSection(GeometryShowcaseOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<GeometryShowcaseSource>();
+
+        services.AddOptions<EasternFlankOptions>()
+            .Bind(configuration.GetSection(EasternFlankOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSimulationSource<EasternFlankSource>();
+
         return services;
     }
 }
