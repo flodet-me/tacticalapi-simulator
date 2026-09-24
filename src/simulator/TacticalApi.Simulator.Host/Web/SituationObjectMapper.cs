@@ -1,3 +1,4 @@
+using System.Globalization;
 using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Core.Identities;
 
@@ -6,9 +7,10 @@ namespace TacticalApi.Simulator.Host.Web;
 /// <summary>
 ///     Flattens store snapshots into <see cref="MapObject" />s for the read-only map GUI
 ///     (<c>/api/objects</c>). Display-only: geometry is simplified (e.g. an ellipse becomes its
-///     center point) rather than reproducing exact TacticalAPI rendering, and only string-form
-///     symbol identifiers (2525B/C, APP-6B/D SIDCs) are surfaced for icon rendering - numeric
-///     identifiers (2525D/E) are left for the frontend to fall back to a plain marker.
+///     center point) rather than reproducing exact TacticalAPI rendering. Both symbol identifier
+///     forms are surfaced for icon rendering - string-form SIDCs (2525B/C, APP-6B) as they are,
+///     numeric ones (2525D/E, APP-6D/E) joined into their 20-digit string form, which is what the
+///     frontend's renderer takes for either standard.
 /// </summary>
 public static class SituationObjectMapper
 {
@@ -309,10 +311,32 @@ public static class SituationObjectMapper
     private static MapSymbolIdentifier? SymbolIdentifierText(DataPropertySymbolIdentifier? property)
     {
         var content = property?.Content;
-        if (content is null || content.IdentifierCase != SymbolIdentifier.IdentifierOneofCase.StringIdentifier)
-            return null;
+        var sidc = content?.IdentifierCase switch
+        {
+            SymbolIdentifier.IdentifierOneofCase.StringIdentifier => content.StringIdentifier,
+            SymbolIdentifier.IdentifierOneofCase.NumericIdentifier => NumericSidc(content.NumericIdentifier),
+            _ => null
+        };
 
-        return new MapSymbolIdentifier(content.StringIdentifier, content.SymbolCatalog.ToString());
+        return sidc is null ? null : new MapSymbolIdentifier(sidc, content?.SymbolCatalog.ToString() ?? string.Empty);
+    }
+
+    /// <summary>
+    ///     Joins a numeric identifier's two sets of ten digits into the single 20-digit string the
+    ///     frontend's symbol renderer expects for 2525D/E and APP-6D/E. Each set is left-padded back
+    ///     to ten digits, since a set starting with zeros arrives as a shorter number. A set that
+    ///     can't be ten digits at all is not a SIDC, so it yields null and the frontend falls back
+    ///     to a plain marker rather than drawing a wrong symbol.
+    /// </summary>
+    private static string? NumericSidc(NumericIdentifier? numeric)
+    {
+        const long maxTenDigits = 9_999_999_999L;
+        if (numeric is null) return null;
+        if (numeric.FirstTenDigits is < 0 or > maxTenDigits) return null;
+        if (numeric.SecondTenDigits is < 0 or > maxTenDigits) return null;
+
+        return numeric.FirstTenDigits.ToString("D10", CultureInfo.InvariantCulture) +
+               numeric.SecondTenDigits.ToString("D10", CultureInfo.InvariantCulture);
     }
 
     private static MapLocation? ExtractLocation(SymbolLocation? location)
