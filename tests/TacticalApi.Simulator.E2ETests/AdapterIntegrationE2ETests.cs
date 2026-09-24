@@ -78,6 +78,7 @@ public sealed class AdapterIntegrationE2ETests
     {
         await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
         var client = serverFactory.CreateGrpcClient();
+        var blueForceClient = serverFactory.CreateBlueForceClient();
 
         var adapterBuilder = GenericHost.CreateApplicationBuilder();
         adapterBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -85,6 +86,7 @@ public sealed class AdapterIntegrationE2ETests
             [$"{GrpcIngestOptions.SectionName}:{nameof(GrpcIngestOptions.Address)}"] = "http://localhost:5100",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "false",
             [$"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}"] = "false",
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.Enabled)}"] = "false",
             [$"{ConvoyEscortOptions.SectionName}:{nameof(ConvoyEscortOptions.Enabled)}"] = "true",
             [$"{ConvoyEscortOptions.SectionName}:{nameof(ConvoyEscortOptions.UpdateInterval)}"] = "00:00:00.500",
             // Guaranteed ambush on the very first cycle, regardless of risk-zone position or seed.
@@ -104,12 +106,17 @@ public sealed class AdapterIntegrationE2ETests
                 var get = await client.GetSituationObjectsAsync(
                     new GetSituationObjectsRequest(), cancellationToken: cts.Token);
 
+                // The serial itself now arrives over BlueForceTracking - the whole
+                // point of the split - so the scenario is only fully observed when
+                // both services have been fed from this one adapter.
+                var blueForces = await blueForceClient.GetBlueForcesAsync(
+                    new GetBlueForcesRequest(), cancellationToken: cts.Token);
+
                 var hasRoute = get.SituationObjects.Any(o =>
                     o.TypeCase == SituationObject.TypeOneofCase.Route &&
                     o.Route.Identity?.StringIdentity == "convoy:route:condor");
-                var hasVehicles = get.SituationObjects.Any(o =>
-                    o.TypeCase == SituationObject.TypeOneofCase.Symbol &&
-                    o.Symbol.Identity?.StringIdentity.StartsWith("convoy:vehicle:", StringComparison.Ordinal) == true);
+                var hasVehicles = blueForces.BlueForces.Any(bf =>
+                    bf.Identity?.StringIdentity.StartsWith("convoy:vehicle:", StringComparison.Ordinal) == true);
                 var hasAmbush = get.SituationObjects.Any(o =>
                     o.TypeCase == SituationObject.TypeOneofCase.ActionEvent &&
                     o.ActionEvent.ActionEventType?.Content == ActionEventType.Ambush);
@@ -122,7 +129,7 @@ public sealed class AdapterIntegrationE2ETests
                 await Task.Delay(250, cts.Token);
             }
 
-            Assert.Fail("Adapter did not produce the convoy route, vehicles, an ambush, and a SALUTE report in time.");
+            Assert.Fail("Adapter did not produce the convoy route, its vehicles as blue forces, an ambush, and a SALUTE report in time.");
         }
         finally
         {
@@ -135,6 +142,7 @@ public sealed class AdapterIntegrationE2ETests
     {
         await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
         var client = serverFactory.CreateGrpcClient();
+        var blueForceClient = serverFactory.CreateBlueForceClient();
 
         var adapterBuilder = GenericHost.CreateApplicationBuilder();
         adapterBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -142,6 +150,7 @@ public sealed class AdapterIntegrationE2ETests
             [$"{GrpcIngestOptions.SectionName}:{nameof(GrpcIngestOptions.Address)}"] = "http://localhost:5100",
             [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "false",
             [$"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}"] = "false",
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.Enabled)}"] = "false",
             [$"{CombatOutpostDefenseOptions.SectionName}:{nameof(CombatOutpostDefenseOptions.Enabled)}"] = "true",
             [$"{CombatOutpostDefenseOptions.SectionName}:{nameof(CombatOutpostDefenseOptions.UpdateInterval)}"] =
                 "00:00:00.500",
@@ -171,12 +180,16 @@ public sealed class AdapterIntegrationE2ETests
                 var get = await client.GetSituationObjectsAsync(
                     new GetSituationObjectsRequest(), cancellationToken: cts.Token);
 
+                // The perimeter graphic stays a situation object; the posts manning it
+                // report themselves over BlueForceTracking.
+                var blueForces = await blueForceClient.GetBlueForcesAsync(
+                    new GetBlueForcesRequest(), cancellationToken: cts.Token);
+
                 var hasPerimeter = get.SituationObjects.Any(o =>
                     o.TypeCase == SituationObject.TypeOneofCase.Symbol &&
                     o.Symbol.Identity?.StringIdentity == "cop:perimeter");
-                var opCount = get.SituationObjects.Count(o =>
-                    o.TypeCase == SituationObject.TypeOneofCase.Symbol &&
-                    o.Symbol.Identity?.StringIdentity.StartsWith("cop:op:", StringComparison.Ordinal) == true);
+                var opCount = blueForces.BlueForces.Count(bf =>
+                    bf.Identity?.StringIdentity.StartsWith("cop:bf:op:", StringComparison.Ordinal) == true);
                 var hasDefendTask = get.SituationObjects.Any(o =>
                     o.TypeCase == SituationObject.TypeOneofCase.ActionTask &&
                     o.ActionTask.Identity?.StringIdentity == "cop:task:defend");
@@ -194,6 +207,67 @@ public sealed class AdapterIntegrationE2ETests
             }
 
             Assert.Fail("Adapter did not produce the COP perimeter/OPs, defend task, a ground assault, and a SITREP in time.");
+        }
+        finally
+        {
+            await adapter.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BlueForcePatrolAdapter_FeedsBothBlueForceTrackingAndOwnPose_EndToEnd()
+    {
+        // The topology check for the contract's other two services: one adapter
+        // process, one channel, two runners driving one source - and both RPCs
+        // landing on the Host over a real socket.
+        await using var serverFactory = new SimulatorFactory(null, useRealServer: true);
+        var blueForces = serverFactory.CreateBlueForceClient();
+        var ownPose = serverFactory.CreateOwnPoseClient();
+
+        var adapterBuilder = GenericHost.CreateApplicationBuilder();
+        adapterBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"{GrpcIngestOptions.SectionName}:{nameof(GrpcIngestOptions.Address)}"] = "http://localhost:5100",
+            [$"{SyntheticScenarioOptions.SectionName}:{nameof(SyntheticScenarioOptions.Enabled)}"] = "false",
+            [$"{SyntheticAirTrackOptions.SectionName}:{nameof(SyntheticAirTrackOptions.Enabled)}"] = "false",
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.Enabled)}"] = "true",
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.UpdateInterval)}"] =
+                "00:00:00.500",
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.DismountCount)}"] = "2",
+            // No GNSS dropout, so the own position is reported on every cycle and the
+            // test isn't waiting on a coin flip.
+            [$"{BlueForcePatrolOptions.SectionName}:{nameof(BlueForcePatrolOptions.GnssOutageProbability)}"] = "0"
+        });
+        adapterBuilder.Services.AddSituationIngestClient(adapterBuilder.Configuration);
+        adapterBuilder.Services.AddSyntheticSources(adapterBuilder.Configuration);
+
+        using var cts = new CancellationTokenSource(E2E.Timeout);
+        using var adapter = adapterBuilder.Build();
+        await adapter.StartAsync(cts.Token);
+
+        try
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                var forces = await blueForces.GetBlueForcesAsync(
+                    new GetBlueForcesRequest(), cancellationToken: cts.Token);
+                var position = await ownPose.GetPositionAsync(
+                    new GetPositionRequest(), cancellationToken: cts.Token);
+
+                // Carrier + UAS + leader + two riflemen, with the three type flags
+                // spread across them, and a position under the configured source.
+                var hasWholeSection = forces.BlueForces.Count == 5
+                                      && forces.BlueForces.Any(bf => bf.BlueForceType?.IsLeader == true)
+                                      && forces.BlueForces.Any(bf => bf.BlueForceType?.IsVehicle == true)
+                                      && forces.BlueForces.Any(bf => bf.BlueForceType?.IsUnmanned == true);
+                var hasPosition = position.Position?.SourceIdentifier == "GNSS";
+
+                if (hasWholeSection && hasPosition) return; // both services fed over gRPC
+
+                await Task.Delay(250, cts.Token);
+            }
+
+            Assert.Fail("Adapter did not feed BlueForceTracking and OwnPose in time.");
         }
         finally
         {

@@ -95,7 +95,7 @@
       font-size: 0.82rem;
     }
     #search:focus { outline: none; border-color: var(--accent); }
-    #type-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    #type-chips, #blue-force-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
     .chip {
       display: inline-flex;
       align-items: center;
@@ -241,6 +241,7 @@
       <div id="filters">
         <input id="search" type="search" placeholder="Filter by name or id…" aria-label="Filter by name or id">
         <div id="type-chips"></div>
+        <div id="blue-force-chips"></div>
       </div>
       <div class="count" id="count">0 objects</div>
       <div id="object-list"></div>
@@ -306,6 +307,15 @@
     }).addTo(map);
 
     const layerGroup = L.layerGroup().addTo(map);
+
+    // Blue forces are a layer of their own, not extra entries in layerGroup: they come
+    // from a different service (BlueForceTracking) and a viewer needs to be able to
+    // tell the friendly picture that reports itself apart from the situation picture
+    // someone else reported - including by switching it off entirely.
+    const blueForceLayer = L.layerGroup().addTo(map);
+    let showBlueForces = true;
+    let lastBlueForces = [];
+
     let hasFittedBounds = false;
     const markersById = new Map();
 
@@ -554,6 +564,22 @@
       }
     }
 
+    const BLUE_FORCE_COLOR = '#37d67a';
+
+    function buildBlueForceChip() {
+      const container = document.getElementById('blue-force-chips');
+      container.innerHTML = '';
+      const chip = document.createElement('button');
+      chip.className = 'chip active';
+      chip.innerHTML = `<span class="dot" style="background:${BLUE_FORCE_COLOR}"></span>Blue forces`;
+      chip.addEventListener('click', () => {
+        showBlueForces = !showBlueForces;
+        chip.classList.toggle('active', showBlueForces);
+        renderAll();
+      });
+      container.appendChild(chip);
+    }
+
     document.getElementById('search').addEventListener('input', (e) => {
       searchQuery = e.target.value.trim().toLowerCase();
       renderAll();
@@ -563,6 +589,79 @@
       const filtered = lastObjects.filter(matchesFilter);
       renderMap(filtered);
       renderSidebar(filtered);
+      renderBlueForces(showBlueForces ? lastBlueForces : []);
+    }
+
+    function blueForceRoles(bf) {
+      const roles = [];
+      if (bf.isLeader) roles.push('leader');
+      if (bf.isVehicle) roles.push('vehicle');
+      if (bf.isUnmanned) roles.push('unmanned');
+      return roles;
+    }
+
+    // Same markup as popupHtml so a blue force popup reads exactly like a situation
+    // object one; only the "type" line says which service it came from.
+    function blueForcePopupHtml(bf) {
+      const lines = [`<div class="popup"><div class="type">Blue force${bf.own ? ' (own)' : ''}</div>`];
+      lines.push(`<div class="name">${escapeHtml(bf.callsign || bf.id)}</div>`);
+      lines.push(`<div class="field">${escapeHtml(bf.id)}</div>`);
+
+      const rows = [];
+      const roles = blueForceRoles(bf);
+      if (roles.length > 0) rows.push(`<dt>Type</dt><dd>${roles.join(', ')}</dd>`);
+      if (bf.mountHost) rows.push(`<dt>Mounted on</dt><dd>${escapeHtml(bf.mountHost)}</dd>`);
+      if (bf.organizationUnit) rows.push(`<dt>Org unit</dt><dd>${escapeHtml(bf.organizationUnit)}</dd>`);
+      if (bf.speed != null) rows.push(`<dt>Speed</dt><dd>${bf.speed.toFixed(1)} m/s</dd>`);
+      if (bf.lastContactTime) {
+        rows.push(`<dt>Last contact</dt><dd>${new Date(bf.lastContactTime).toLocaleTimeString()}</dd>`);
+      }
+
+      if (rows.length > 0) lines.push(`<div class="details"><dl>${rows.join('')}</dl></div>`);
+      lines.push('</div>');
+      return lines.join('');
+    }
+
+    function renderBlueForces(blueForces) {
+      blueForceLayer.clearLayers();
+      if (blueForces.length === 0) return;
+
+      const byId = new Map(blueForces.map((bf) => [bf.id, bf]));
+
+      for (const bf of blueForces) {
+        if (!bf.location) continue;
+        const point = [bf.location.lat, bf.location.lon];
+        const icon = symbolIcon(bf.symbolIdentifier);
+
+        const marker = icon
+          ? L.marker(point, { icon })
+          : L.circleMarker(point, {
+              radius: bf.own ? 8 : 6,
+              color: BLUE_FORCE_COLOR,
+              fillColor: BLUE_FORCE_COLOR,
+              fillOpacity: 0.9,
+              weight: 2
+            });
+        marker.bindPopup(blueForcePopupHtml(bf)).addTo(blueForceLayer);
+
+        // The own force gets a ring so it can be picked out of a cluster of
+        // friendlies at a glance - it is the one the operator is standing in.
+        if (bf.own) {
+          L.circleMarker(point, {
+            radius: 14, color: BLUE_FORCE_COLOR, weight: 2, fill: false, dashArray: '3 3'
+          }).addTo(blueForceLayer);
+        }
+
+        // Mounted forces sit on top of their carrier, so without a tie line a whole
+        // section looks like one marker - drawn short and dashed, since the two are
+        // genuinely at the same place.
+        const host = bf.mountHost ? byId.get(bf.mountHost) : null;
+        if (host && host.location) {
+          L.polyline([point, [host.location.lat, host.location.lon]], {
+            color: BLUE_FORCE_COLOR, weight: 1, opacity: 0.6, dashArray: '2 4'
+          }).addTo(blueForceLayer);
+        }
+      }
     }
 
     // Binds the popup and the sidebar-selection link to a layer in one place, so every shape
@@ -757,9 +856,14 @@
     async function refresh() {
       const status = document.getElementById('status');
       try {
-        const response = await fetch('/api/objects');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        lastObjects = await response.json();
+        const [objects, blueForces] = await Promise.all([fetch('/api/objects'), fetch('/api/blueforces')]);
+        if (!objects.ok) throw new Error(`HTTP ${objects.status}`);
+        lastObjects = await objects.json();
+
+        // A missing blue force layer is not an error for the map as a whole: the
+        // endpoint may simply not be there when this page is served by something
+        // older than the blue force service.
+        lastBlueForces = blueForces.ok ? await blueForces.json() : [];
         renderAll();
         status.innerHTML = `<span class="dot"></span>updated ${new Date().toLocaleTimeString()}`;
         status.classList.remove('error');
@@ -779,6 +883,7 @@
       }
 
       buildFilterChips();
+      buildBlueForceChip();
       refresh();
       setInterval(refresh, REFRESH_MS);
     }

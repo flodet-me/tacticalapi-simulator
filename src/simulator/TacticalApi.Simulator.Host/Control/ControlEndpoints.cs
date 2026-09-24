@@ -34,6 +34,11 @@ public static class ControlEndpoints
         app.MapGet($"{BasePath}/state", (
             SituationStore store,
             SituationEventBroker broker,
+            BlueForceStore blueForces,
+            BlueForceEventBroker blueForceBroker,
+            OwnPoseStore ownPose,
+            PositionEventBroker positionBroker,
+            TimeProvider timeProvider,
             SimulationPause pause,
             IOptionsMonitor<FaultInjectionOptions> faults,
             IOptionsMonitor<ControlOptions> options) =>
@@ -41,11 +46,25 @@ public static class ControlEndpoints
             if (!options.CurrentValue.Enabled) return Results.NotFound();
 
             var fault = faults.CurrentValue;
+            var position = ownPose.GetPosition(timeProvider.GetUtcNow());
             return Results.Ok(new
             {
                 paused = pause.IsPaused,
                 situationObjects = store.Count,
                 subscribers = broker.SubscriberCount,
+                blueForces = blueForces.Count,
+                blueForceSubscribers = blueForceBroker.SubscriberCount,
+                positionSources = ownPose.SourceCount,
+                positionSubscribers = positionBroker.SubscriberCount,
+                primaryPosition = position is null
+                    ? null
+                    : new
+                    {
+                        source = position.SourceIdentifier,
+                        lat = position.PointLocation?.GeoPoint?.LatitudeCoordinate,
+                        lon = position.PointLocation?.GeoPoint?.LongitudeCoordinate,
+                        invalidOrExpired = position.IsInvalidOrExpired
+                    },
                 faults = new
                 {
                     enabled = fault.Enabled,
@@ -87,14 +106,22 @@ public static class ControlEndpoints
 
         app.MapPost($"{BasePath}/reset", (
             SituationStore store,
+            BlueForceStore blueForces,
+            OwnPoseStore ownPose,
             IOptionsMonitor<ControlOptions> options,
             ILogger<SituationStore> logger) =>
         {
             if (!options.CurrentValue.Enabled) return Results.NotFound();
 
+            // A reset returns the whole simulator to its just-started state, which
+            // means all three services: a situation emptied while blue forces kept
+            // reporting from the previous run would be a state no restart produces.
             var dropped = store.Clear();
+            var droppedBlueForces = blueForces.Clear();
+            var droppedPositionSources = ownPose.Clear();
             logger.SituationReset(dropped);
-            return Results.Ok(new { dropped });
+            logger.BlueForcesReset(droppedBlueForces, droppedPositionSources);
+            return Results.Ok(new { dropped, droppedBlueForces, droppedPositionSources });
         });
 
         app.MapPost($"{BasePath}/objects", async (
@@ -110,6 +137,35 @@ public static class ControlEndpoints
                 var result = store.AddOrUpdate(parsed.SituationObjects);
                 if (result.Success) logger.ObjectsInjected(parsed.SituationObjects.Count);
                 return (result.Success, result.ErrorMessage, parsed.SituationObjects.Count);
+            }).ConfigureAwait(false);
+        });
+
+        app.MapPost($"{BasePath}/blueforces", async (
+            HttpRequest request,
+            BlueForceStore store,
+            IOptionsMonitor<ControlOptions> options) =>
+        {
+            if (!options.CurrentValue.Enabled) return Results.NotFound();
+
+            return await ApplyAsync<AddOrUpdateBlueForcesRequest>(request, parsed =>
+            {
+                var result = store.AddOrUpdate(parsed.BlueForcesToUpdates);
+                return (result.Success, result.ErrorMessage, parsed.BlueForcesToUpdates.Count);
+            }).ConfigureAwait(false);
+        });
+
+        app.MapPost($"{BasePath}/position", async (
+            HttpRequest request,
+            OwnPoseStore store,
+            TimeProvider timeProvider,
+            IOptionsMonitor<ControlOptions> options) =>
+        {
+            if (!options.CurrentValue.Enabled) return Results.NotFound();
+
+            return await ApplyAsync<UpdatePositionRequest>(request, parsed =>
+            {
+                var result = store.UpdatePosition(parsed.Position, timeProvider.GetUtcNow());
+                return (result.Success, result.ErrorMessage, parsed.Position is null ? 0 : 1);
             }).ConfigureAwait(false);
         });
 

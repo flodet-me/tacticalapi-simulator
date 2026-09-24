@@ -23,9 +23,14 @@ public sealed class CommandLineOptions
     public const string Usage = """
         Usage: tacticalapi-conformance [options]
 
-        Verifies that a TacticalAPI Situation implementation behaves as the contract requires.
-        By default it WRITES to the situation under test: objects are added and deleted under a
-        'conformance:<run-id>:' identity prefix. Use --read-only against a situation in use.
+        Verifies that a TacticalAPI implementation behaves as the contract requires, across all
+        three of its services: Situation, BlueForceTracking and OwnPose.
+
+        By default it WRITES to the implementation under test: situation objects are added and
+        deleted under a 'conformance:<run-id>:' identity prefix. Blue forces and positions it
+        writes CANNOT be removed afterwards - the contract has no delete for either - and are
+        left to age out on the implementation's own timeout. Use --read-only against a live
+        system.
 
         Connection:
           --address <uri>      Endpoint to check (default: http://localhost:5100).
@@ -177,7 +182,7 @@ public sealed class CommandLineOptions
     {
         if (ids is null) return [];
 
-        var known = SituationContractChecks.All.Select(check => check.Id).ToHashSet(StringComparer.Ordinal);
+        var known = TacticalApiContractChecks.All.Select(check => check.Id).ToHashSet(StringComparer.Ordinal);
         return ids.Where(id => !known.Contains(id)).ToList();
     }
 

@@ -59,6 +59,103 @@ internal static class TestHelpers
             NullLogger<SituationStore>.Instance);
     }
 
+    /// <summary>A blue force broker wired to a throwaway meter, for tests that don't assert on metrics.</summary>
+    internal static BlueForceEventBroker CreateBlueForceBroker(
+        SimulatorOptions? options = null, SimulatorMetrics? metrics = null)
+    {
+        return new BlueForceEventBroker(Options(options), metrics ?? new SimulatorMetrics());
+    }
+
+    internal static BlueForceStore CreateBlueForceStore(
+        SimulatorOptions? options = null,
+        BlueForceEventBroker? broker = null,
+        SimulationPause? pause = null,
+        SimulatorMetrics? metrics = null)
+    {
+        var monitor = Options(options);
+        metrics ??= new SimulatorMetrics();
+        return new BlueForceStore(
+            broker ?? new BlueForceEventBroker(monitor, metrics),
+            monitor,
+            metrics,
+            pause ?? new SimulationPause(),
+            NullLogger<BlueForceStore>.Instance);
+    }
+
+    /// <summary>A position broker wired to a throwaway meter, for tests that don't assert on metrics.</summary>
+    internal static PositionEventBroker CreateOwnPoseBroker(
+        SimulatorOptions? options = null, SimulatorMetrics? metrics = null)
+    {
+        return new PositionEventBroker(Options(options), metrics ?? new SimulatorMetrics());
+    }
+
+    internal static OwnPoseStore CreateOwnPoseStore(
+        SimulatorOptions? options = null,
+        PositionEventBroker? broker = null,
+        SimulationPause? pause = null,
+        SimulatorMetrics? metrics = null)
+    {
+        var monitor = Options(options);
+        metrics ??= new SimulatorMetrics();
+        return new OwnPoseStore(
+            broker ?? new PositionEventBroker(monitor, metrics),
+            monitor,
+            metrics,
+            pause ?? new SimulationPause(),
+            NullLogger<OwnPoseStore>.Instance);
+    }
+
+    /// <summary>A minimal blue force keep-alive; further fields are set by the caller.</summary>
+    internal static UpdateBlueForce BlueForceUpdate(
+        string id,
+        DateTimeOffset lastContactTime,
+        string? callsign = null,
+        double? latitude = null,
+        double? longitude = null,
+        Action<UpdateBlueForce>? configure = null)
+    {
+        var update = new UpdateBlueForce
+        {
+            Identity = new Identity { StringIdentity = id },
+            LastContactTime = Timestamp.FromDateTimeOffset(lastContactTime)
+        };
+
+        if (callsign is not null) update.Callsign = callsign;
+
+        if (latitude is not null && longitude is not null)
+            update.PointLocation = new Point
+            {
+                LocationTime = Timestamp.FromDateTimeOffset(lastContactTime),
+                GeoPoint = new GeoPoint
+                {
+                    LatitudeCoordinate = latitude.Value,
+                    LongitudeCoordinate = longitude.Value
+                }
+            };
+
+        configure?.Invoke(update);
+        return update;
+    }
+
+    /// <summary>A minimal position report from one named source.</summary>
+    internal static UpdatePosition PositionUpdate(
+        string source, double? latitude = null, double? longitude = null)
+    {
+        var update = new UpdatePosition { SourceIdentifier = source };
+
+        if (latitude is not null && longitude is not null)
+            update.PointLocation = new Point
+            {
+                GeoPoint = new GeoPoint
+                {
+                    LatitudeCoordinate = latitude.Value,
+                    LongitudeCoordinate = longitude.Value
+                }
+            };
+
+        return update;
+    }
+
     internal static UpdateSituationObject SymbolUpdate(
         string id,
         DateTimeOffset reportingTime,

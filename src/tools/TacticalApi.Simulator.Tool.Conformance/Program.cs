@@ -7,7 +7,8 @@ using Rheinmetall.TacticalApi.V0;
 using TacticalApi.Simulator.Tool.Conformance;
 
 // Verifies that whatever answers at --address behaves like the TacticalAPI
-// Situation contract requires. Exit codes: 0 conformant, 1 a required check
+// contract requires - all three of its services: Situation, BlueForceTracking
+// and OwnPose. Exit codes: 0 conformant, 1 a required check
 // failed, 2 bad arguments, 3 the endpoint could not be reached at all.
 var options = CommandLineOptions.Parse(args);
 if (options is null)
@@ -24,7 +25,7 @@ if (options.ShowHelp)
 
 if (options.ListOnly)
 {
-    Console.WriteLine(ConformanceReportFormatter.FormatCatalog(SituationContractChecks.All));
+    Console.WriteLine(ConformanceReportFormatter.FormatCatalog(TacticalApiContractChecks.All));
     return 0;
 }
 
@@ -47,7 +48,7 @@ using var channel = options.GrpcWeb
 
 var client = new Situation.SituationClient(channel);
 var context = new ConformanceContext(
-    client,
+    channel,
     options.ReporterId,
     DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture),
     options.StreamTimeout);
@@ -71,19 +72,34 @@ if (await Unreachable(client, cancellation.Token).ConfigureAwait(false) is { } e
 
 if (!options.Json)
 {
-    var selected = SituationContractChecks.All.Count(check => options.Selection.SkipReason(check) is null);
-    Console.WriteLine($"Running {selected} of {SituationContractChecks.All.Count} check(s) against {options.Address}.");
+    var selected = TacticalApiContractChecks.All.Count(check => options.Selection.SkipReason(check) is null);
+    Console.WriteLine(
+        $"Running {selected} of {TacticalApiContractChecks.All.Count} check(s) against {options.Address}.");
 
     // This suite writes to the situation it is checking unless told not to. Saying so
     // up front is cheaper than explaining it afterwards to whoever was watching it.
-    Console.WriteLine(options.Selection.ReadOnly
-        ? "Read-only run: nothing will be written to the situation."
-        : $"This adds and deletes objects under the identity prefix 'conformance:{context.RunId}:'.");
+    if (options.Selection.ReadOnly)
+    {
+        Console.WriteLine("Read-only run: nothing will be written.");
+    }
+    else
+    {
+        Console.WriteLine($"This adds and deletes objects under the identity prefix 'conformance:{context.RunId}:'.");
+
+        // Said out loud because it cannot be fixed by being more careful: neither
+        // service has a delete. What these checks write stays until the implementation
+        // times it out, and someone watching the map deserves to know that in advance.
+        Console.WriteLine(
+            "Blue forces and positions written by this run CANNOT be cleaned up - the contract gives "
+            + "BlueForceTracking no delete RPC and OwnPose no way to un-report a position. They age out "
+            + "on the implementation's own keep-alive timeout.");
+    }
+
     Console.WriteLine();
 }
 
 var reports = await ConformanceRunner
-    .RunAsync(context, SituationContractChecks.All, options.Selection, cancellation.Token)
+    .RunAsync(context, TacticalApiContractChecks.All, options.Selection, cancellation.Token)
     .ConfigureAwait(false);
 
 Console.WriteLine(options.Json

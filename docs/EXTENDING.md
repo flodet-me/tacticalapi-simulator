@@ -2,7 +2,7 @@
 
 Adding a data source or an object type is what this document is about. Two nearby things it is *not* about:
 
-- Anything driven by the protobuf descriptors (`SituationObjectToUpdate`, `ReplayTimestamps`) needs no work when a new object type appears — that is why they are written that way. See [Architecture](ARCHITECTURE.md#interface-semantics-implemented).
+- Anything driven by the protobuf descriptors (`SituationObjectToUpdate`, `ReplayTimestamps`) needs no work when a new object type appears — that is why they are written that way. See [Architecture](ARCHITECTURE.md#interface-semantics-implemented). They cover the `Situation` service only; recordings are `Situation` traffic, deliberately.
 - A new Host-side capability that isn't part of the contract (another fault, another control endpoint) belongs beside the existing ones in `Host/Faults/` or `Host/Control/`, never as a new RPC on the `Situation` service.
 
 ## Adding your own data source (e.g. an AIS ship tracker)
@@ -67,6 +67,51 @@ Each source gets its own `SimulationSourceRunner` background service (so a slow 
 never stalls others in the same adapter; exceptions are logged and retried next cycle) and, per the
 pattern above, its own adapter process entirely - it never touches the Host, which has no sources of
 its own (see [Architecture](ARCHITECTURE.md)).
+
+## Adding a blue force or own-position source
+
+`BlueForceTracking` and `OwnPose` are separate services with their own write semantics, so they have their own
+source interfaces — `IBlueForceSource` (produces `UpdateBlueForce`s) and `IOwnPoseSource` (produces one
+`UpdatePosition`, or null to report nothing). Scheduling, enable/disable and failure handling are inherited from
+the same `SourceRunner<T>` as an `ISimulationSource`, so a source looks the same apart from what it returns:
+
+```csharp
+public sealed class MyTrackerSource(IOptionsMonitor<MyOptions> options, TimeProvider time) : IBlueForceSource
+{
+    public string Name => "MyTracker";
+    public bool Enabled => options.CurrentValue.Enabled;
+
+    // The call IS the keep-alive, so this must stay well under the implementation's
+    // timeout. The contract asks for at least every 30s; treat that as the ceiling.
+    public TimeSpan Interval => options.CurrentValue.UpdateInterval;
+
+    public Task<IReadOnlyList<UpdateBlueForce>> ProduceBlueForcesAsync(CancellationToken ct) => ...;
+}
+```
+
+Register it with `services.AddBlueForceSource<MyTrackerSource>()` (or `AddOwnPoseSource<...>`), exactly as for a
+simulation source.
+
+One class may implement more than one of the three interfaces — `BlueForcePatrolSource` is both an
+`IBlueForceSource` and an `IOwnPoseSource`. Register it once per service; the source itself is registered with
+`TryAddSingleton`, so both runners drive **one shared instance** rather than two copies with diverging state.
+That matters more than it looks: two instances would each keep their own patrol clock, and the position the
+source reports over `OwnPose` would drift away from the same unit's blue force.
+
+The price of that shared instance is that **its mutable state is touched by two threads**. Each runner is its own
+`BackgroundService` on its own timer, so the two `Produce*Async` methods genuinely do run at once. Anything a
+dual-role source keeps between cycles — a counter, a state machine, and above all a `Random`, which returns
+garbage and can corrupt itself when used concurrently — has to be guarded. `BlueForcePatrolSource` keeps all of
+its behind one gate and computes everything else as a pure function of the options and the current time; do the
+same, or keep the source stateless.
+
+Two things a blue force source cannot do, both by contract rather than by omission:
+
+- **Delete.** There is no delete RPC. A blue force disappears only by stopping its keep-alives and waiting out
+  the implementation's timeout.
+- **Set `own_blue_force` or `associated_organization_unit_identity`.** `UpdateBlueForce` has no field for
+  either — they belong to the system answering, not to the report. On this Host, the first comes from
+  `Simulator:BlueForce:OwnIdentity` (see [Configuration](CONFIGURATION.md#simulatorblueforce)).
 
 ## Adding support for more situation object types
 

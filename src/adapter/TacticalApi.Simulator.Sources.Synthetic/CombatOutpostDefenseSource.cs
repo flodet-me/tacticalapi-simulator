@@ -24,13 +24,18 @@ public sealed class CombatOutpostDefenseSource(
     IOptionsMonitor<CombatOutpostDefenseOptions> options,
     TimeProvider timeProvider,
     ILogger<CombatOutpostDefenseSource> logger)
-    : ISimulationSource
+    : ISimulationSource, IBlueForceSource
 {
     private const string CopName = "COP RESOLUTE";
 
     private readonly Random _random = new(options.CurrentValue.Seed);
     private readonly (double Lat, double Lon)[] _perimeter = BuildPerimeter(options.CurrentValue);
     private readonly (double Lat, double Lon)[] _observationPosts = BuildObservationPosts(options.CurrentValue);
+
+    // Two runners drive this one instance - the situation picture and the blue force
+    // picture are separate services on separate schedules - so the strength
+    // bookkeeping below is reachable from two threads.
+    private readonly Lock _stateGate = new();
 
     private double _hostileCellStrength = options.CurrentValue.InitialHostileCellStrength;
     private double _garrisonEffective = options.CurrentValue.GarrisonStrength;
@@ -56,39 +61,111 @@ public sealed class CombatOutpostDefenseSource(
         var nowTs = Timestamp.FromDateTimeOffset(now);
         var reporter = new Identity { StringIdentity = o.ReporterId };
 
-        Regenerate(o, now);
-        var isNight = IsNight(now, o.NightStartHourUtc, o.NightEndHourUtc);
-
-        var updates = new List<UpdateSituationObject>
+        List<UpdateSituationObject> updates;
+        lock (_stateGate)
         {
-            Perimeter(reporter, nowTs, o),
-            DefendTask(reporter, nowTs, isNight)
-        };
-        for (var i = 0; i < _observationPosts.Length; i++)
-            updates.Add(ObservationPost(o, i));
+            Regenerate(o, now);
+            var isNight = IsNight(now, o.NightStartHourUtc, o.NightEndHourUtc);
 
-        var contactProbability = isNight ? o.DayContactProbability * o.NightContactProbabilityMultiplier : o.DayContactProbability;
-        var cooldownElapsed = _contactCooldownUntil is null || now >= _contactCooldownUntil;
+            // The perimeter is a graphic the commander drew and the defend task is an
+            // order, so both stay situation objects. What is NOT here any more is the
+            // observation posts: those are manned friendly positions reporting
+            // themselves, which is a blue force, not something reported about.
+            updates =
+            [
+                Perimeter(reporter, nowTs, o),
+                DefendTask(reporter, nowTs, isNight)
+            ];
 
-        if (cooldownElapsed && _hostileCellStrength >= 1 && _random.NextDouble() < contactProbability)
-        {
-            _contactCooldownUntil = now + o.ContactCooldown;
-            var contactRoll = _random.NextDouble();
-            var (contactUpdates, sitrep) = contactRoll switch
+            var contactProbability = isNight ? o.DayContactProbability * o.NightContactProbabilityMultiplier : o.DayContactProbability;
+            var cooldownElapsed = _contactCooldownUntil is null || now >= _contactCooldownUntil;
+
+            if (cooldownElapsed && _hostileCellStrength >= 1 && _random.NextDouble() < contactProbability)
             {
-                _ when contactRoll < o.AssaultProbabilityGivenContact => ResolveAssault(o, reporter, now, nowTs),
-                _ when contactRoll < o.AssaultProbabilityGivenContact + o.IndirectFireProbabilityGivenContact =>
-                    ResolveIndirectFire(o, reporter, now, nowTs),
-                _ => ResolveProbe(o, reporter, now, nowTs)
-            };
-            updates.AddRange(contactUpdates);
-            _latestSitrep = sitrep;
-        }
+                _contactCooldownUntil = now + o.ContactCooldown;
+                var contactRoll = _random.NextDouble();
+                var (contactUpdates, sitrep) = contactRoll switch
+                {
+                    _ when contactRoll < o.AssaultProbabilityGivenContact => ResolveAssault(o, reporter, now, nowTs),
+                    _ when contactRoll < o.AssaultProbabilityGivenContact + o.IndirectFireProbabilityGivenContact =>
+                        ResolveIndirectFire(o, reporter, now, nowTs),
+                    _ => ResolveProbe(o, reporter, now, nowTs)
+                };
+                updates.AddRange(contactUpdates);
+                _latestSitrep = sitrep;
+            }
 
-        updates.Add(SitrepMessage(reporter, nowTs, now, isNight));
+            updates.Add(SitrepMessage(reporter, nowTs, now, isNight));
+        }
 
         logger.ScenarioCycleProduced(updates.Count);
         return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<UpdateBlueForce>> ProduceBlueForcesAsync(CancellationToken cancellationToken)
+    {
+        var o = options.CurrentValue;
+        var nowTs = Timestamp.FromDateTimeOffset(timeProvider.GetUtcNow());
+
+        // The garrison's command post plus every manned OP. Static positions, but the
+        // keep-alive is the point: stop reporting and the COP goes off the blue force
+        // picture on the implementation's own timeout, which is exactly what a client
+        // needs to be able to notice.
+        var updates = new List<UpdateBlueForce>(_observationPosts.Length + 1);
+
+        double effective;
+        lock (_stateGate)
+        {
+            effective = _garrisonEffective;
+        }
+
+        updates.Add(BlueForce(
+            "cop:bf:cp", $"{CopName} CP [{Math.Round(effective)}/{o.GarrisonStrength} effective]",
+            o.CenterLatitude, o.CenterLongitude, nowTs, new BlueForceType { IsLeader = true }));
+
+        for (var i = 0; i < _observationPosts.Length; i++)
+        {
+            var (lat, lon) = _observationPosts[i];
+            updates.Add(BlueForce($"cop:bf:op:{i}", $"OP {i + 1}", lat, lon, nowTs, new BlueForceType()));
+        }
+
+        logger.CopBlueForcesProduced(updates.Count);
+        return Task.FromResult<IReadOnlyList<UpdateBlueForce>>(updates);
+    }
+
+    /// <summary>
+    ///     Identity of the blue force a Host's <c>Simulator:BlueForce:OwnIdentity</c>
+    ///     should point at for this scenario to show an own force.
+    /// </summary>
+    public static string OwnBlueForceIdentity => "cop:bf:cp";
+
+    private static UpdateBlueForce BlueForce(
+        string id, string callsign, double latitude, double longitude, Timestamp nowTs, BlueForceType type)
+    {
+        return new UpdateBlueForce
+        {
+            Identity = new Identity { StringIdentity = id },
+            LastContactTime = nowTs,
+            Callsign = callsign,
+            Symbol = new SymbolIdentifier
+            {
+                SymbolCatalog = SymbolCatalog.Mil2525C,
+                StringIdentifier = "SFGPUCI--------"
+            },
+            BlueForceType = type,
+            PointLocation = new Point
+            {
+                LocationTime = nowTs,
+                GeoPoint = new GeoPoint
+                {
+                    LatitudeCoordinate = latitude,
+                    LongitudeCoordinate = longitude,
+                    MeasurementCode = MeasurementCode.Gps
+                },
+                Speed = 0
+            }
+        };
     }
 
     // ---------------------------------------------------------------- time/strength bookkeeping
@@ -164,14 +241,6 @@ public sealed class CombatOutpostDefenseSource(
                 Location = new UpdatePropertyLocation { Content = new SymbolLocation { Polygon = polygon } }
             }
         };
-    }
-
-    private UpdateSituationObject ObservationPost(CombatOutpostDefenseOptions o, int index)
-    {
-        var (lat, lon) = _observationPosts[index];
-        var track = new TrackReport($"cop:op:{index}", $"OP {index + 1}", lat, lon, null, null, 0, "Manned observation post");
-        return TrackUpdateFactory.CreateSymbolUpdate(
-            track, o.ReporterId, "SFGPUCI--------", SymbolCatalog.Mil2525C, timeProvider.GetUtcNow(), TimeSpan.FromMinutes(2));
     }
 
     private UpdateSituationObject DefendTask(Identity reporter, Timestamp nowTs, bool isNight)

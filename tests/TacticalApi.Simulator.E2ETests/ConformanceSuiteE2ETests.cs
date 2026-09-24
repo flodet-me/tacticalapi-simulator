@@ -19,19 +19,23 @@ public sealed class ConformanceSuiteE2ETests
     [Fact]
     public async Task EveryCheck_PassesAgainstTheSimulator()
     {
-        // Arrange - a short sweep interval so the expiry check doesn't have to wait
-        // the production default out.
+        // Arrange - short sweep intervals so the two slow checks (situation expiry and
+        // the blue force keep-alive timeout) don't have to wait the production
+        // defaults out. The keep-alive timeout stays comfortably longer than any
+        // single check takes, so the fast blue force checks aren't racing the sweeper.
         await using var factory = new SimulatorFactory(new Dictionary<string, string?>
         {
-            ["Simulator:ExpirySweepInterval"] = "00:00:01"
+            ["Simulator:ExpirySweepInterval"] = "00:00:01",
+            ["Simulator:BlueForce:KeepAliveTimeout"] = "00:00:05",
+            ["Simulator:BlueForce:SweepInterval"] = "00:00:01"
         });
 
         var context = new ConformanceContext(
-            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
         // Act
         var reports = await ConformanceRunner.RunAsync(
-            context, SituationContractChecks.All, new RunSelection(IncludeSlow: true));
+            context, TacticalApiContractChecks.All, new RunSelection(IncludeSlow: true));
 
         // Assert
         var failed = reports.Where(r => r.Result.Outcome == CheckOutcome.Failed).ToList();
@@ -40,8 +44,35 @@ public sealed class ConformanceSuiteE2ETests
             "the simulator failed its own conformance suite:\n"
             + string.Join('\n', failed.Select(r => $"  {r.Check.Id}: {r.Result.Detail}")));
 
-        Assert.Equal(SituationContractChecks.All.Count, reports.Count);
+        Assert.Equal(TacticalApiContractChecks.All.Count, reports.Count);
         Assert.All(reports, r => Assert.Equal(CheckOutcome.Passed, r.Result.Outcome));
+    }
+
+    [Fact]
+    public async Task EveryServiceOfTheContract_IsCovered()
+    {
+        // The suite grew from one service to three. This is what stops the other two
+        // quietly dropping out of the default run again - which would be invisible,
+        // because a suite that checks fewer things passes more easily.
+        await using var factory = new SimulatorFactory();
+        var context = new ConformanceContext(
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+
+        // Act
+        var reports = await ConformanceRunner.RunAsync(
+            context, TacticalApiContractChecks.All, new RunSelection());
+
+        // Assert
+        Assert.NotEmpty(SituationContractChecks.All);
+        Assert.NotEmpty(BlueForceContractChecks.All);
+        Assert.NotEmpty(OwnPoseContractChecks.All);
+        Assert.Equal(
+            SituationContractChecks.All.Count + BlueForceContractChecks.All.Count + OwnPoseContractChecks.All.Count,
+            TacticalApiContractChecks.All.Count);
+
+        Assert.Contains(reports, r => r.Check.Id.StartsWith("blue-force-", StringComparison.Ordinal));
+        Assert.Contains(reports, r => r.Check.Id.StartsWith("own-pose-", StringComparison.Ordinal));
+        Assert.DoesNotContain(reports, r => r.Result.Outcome == CheckOutcome.Failed);
     }
 
     [Fact]
@@ -50,10 +81,10 @@ public sealed class ConformanceSuiteE2ETests
         // Arrange
         await using var factory = new SimulatorFactory();
         var context = new ConformanceContext(
-            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
         // Act
-        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
+        var reports = await ConformanceRunner.RunAsync(context, TacticalApiContractChecks.All, new RunSelection());
 
         // Assert
         Assert.Contains(reports, r => r.Result.Outcome == CheckOutcome.Skipped);
@@ -74,10 +105,10 @@ public sealed class ConformanceSuiteE2ETests
         // A short stream timeout keeps this fast: against an implementation that
         // rejects everything, every streaming check costs exactly one timeout.
         var context = new ConformanceContext(
-            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(1));
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(1));
 
         // Act
-        var reports = await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
+        var reports = await ConformanceRunner.RunAsync(context, TacticalApiContractChecks.All, new RunSelection());
 
         // Assert
         Assert.Contains(reports, r => r.Result.Outcome == CheckOutcome.Failed);
@@ -89,9 +120,9 @@ public sealed class ConformanceSuiteE2ETests
     public void EveryCheck_HasAUniqueIdAndQuotesTheRuleItEnforces()
     {
         // A failure has to point at the contract, not at this tool's opinion.
-        var ids = SituationContractChecks.All.Select(c => c.Id).ToList();
+        var ids = TacticalApiContractChecks.All.Select(c => c.Id).ToList();
         Assert.Equal(ids.Count, ids.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(SituationContractChecks.All, check =>
+        Assert.All(TacticalApiContractChecks.All, check =>
         {
             Assert.False(string.IsNullOrWhiteSpace(check.Title));
             Assert.False(string.IsNullOrWhiteSpace(check.Requirement));
@@ -109,9 +140,9 @@ public sealed class ConformanceSuiteE2ETests
         // automatically rather than going unnoticed.
         await using var factory = new SimulatorFactory();
         var context = new ConformanceContext(
-            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
-        var generated = SituationContractChecks.All
+        var generated = TacticalApiContractChecks.All
             .Where(c => c.Id.StartsWith(ConformanceReportFormatter.ObjectTypePrefix, StringComparison.Ordinal)
                         || c.Id.StartsWith(ConformanceReportFormatter.IdentityKindPrefix, StringComparison.Ordinal)
                         || c.Id.StartsWith(ConformanceReportFormatter.LocationKindPrefix, StringComparison.Ordinal))
@@ -153,9 +184,9 @@ public sealed class ConformanceSuiteE2ETests
         // is covered automatically rather than quietly going unchecked.
         await using var factory = new SimulatorFactory();
         var context = new ConformanceContext(
-            factory.CreateGrpcClient(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}");
 
-        var typeChecks = SituationContractChecks.All
+        var typeChecks = TacticalApiContractChecks.All
             .Where(c => c.Id.StartsWith("object-type-", StringComparison.Ordinal))
             .ToList();
 
@@ -185,11 +216,11 @@ public sealed class ConformanceSuiteE2ETests
         });
 
         var context = new ConformanceContext(
-            client, "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(2));
+            factory.CreateGrpcChannel(), "E2E-Conformance", $"e2e{Guid.NewGuid():N}", TimeSpan.FromSeconds(2));
 
         // Act
         var reports = await ConformanceRunner.RunAsync(
-            context, SituationContractChecks.All, new RunSelection(ReadOnly: true));
+            context, TacticalApiContractChecks.All, new RunSelection(ReadOnly: true));
 
         // Assert - the read-only checks ran and passed...
         var ran = reports.Where(r => r.Result.Outcome != CheckOutcome.Skipped).ToList();
@@ -216,10 +247,10 @@ public sealed class ConformanceSuiteE2ETests
         var client = factory.CreateGrpcClient();
 
         var runId = $"e2e{Guid.NewGuid():N}";
-        var context = new ConformanceContext(client, "E2E-Conformance", runId);
+        var context = new ConformanceContext(factory.CreateGrpcChannel(), "E2E-Conformance", runId);
 
         // Act
-        await ConformanceRunner.RunAsync(context, SituationContractChecks.All, new RunSelection());
+        await ConformanceRunner.RunAsync(context, TacticalApiContractChecks.All, new RunSelection());
 
         // Assert
         var remaining = (await client.GetSituationObjectsAsync(new GetSituationObjectsRequest()))

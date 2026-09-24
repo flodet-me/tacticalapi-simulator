@@ -1,8 +1,8 @@
 # TacticalAPI Simulator
 
-A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface (`rheinmetall.tactical_api.v0.Situation`).
+A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface — `rheinmetall.tactical_api.v0.Situation`, `.BlueForceTracking` and `.OwnPose`.
 
-The Host (`TacticalApi.Simulator.Host`) implements all four RPCs of the `Situation` service against a purely in-memory situation store — no database, no persistence, everything lives for the runtime of the process. It has no data sources of its own.
+The Host (`TacticalApi.Simulator.Host`) implements every service the contract declares — all four RPCs of `Situation`, all three of `BlueForceTracking`, and all three of `OwnPose` — against purely in-memory stores. No database, no persistence, everything lives for the runtime of the process. It has no data sources of its own.
 
 It can also be made to misbehave on purpose, driven from outside the contract (pause/reset/inject), recorded and replayed, scraped for metrics, and used to check *other* implementations of the same contract — see [Beyond a plain stand-in](#beyond-a-plain-stand-in).
 
@@ -28,7 +28,7 @@ dotnet run --project src/adapter/TacticalApi.Simulator.Adapter.Replay
 - **gRPC-Web endpoint: `http://localhost:4268`** (HTTP/1.1) — the official Rheinmetall test client (`testclient/csharp`, which uses `GrpcWebHandler` against this exact address) works against the simulator without changes.
 - **Native gRPC endpoint: `http://localhost:5100`** (HTTP/2 h2c) — with `Grpc.Net.Client` simply `GrpcChannel.ForAddress("http://localhost:5100")` (also requires `AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true)` before creating the channel, since there's no TLS).
 - Status endpoint: `http://localhost:4268/` in the browser (object count, subscriber count).
-- Situation map: `http://localhost:4268/ui` — a read-only web GUI plotting the current situation objects on a map, polling `/api/objects` every 2s.
+- Situation map: `http://localhost:4268/ui` — a read-only web GUI plotting the current situation on a map, polling `/api/objects` every 2s. Blue forces are a second, separately toggleable layer fed from `/api/blueforces`: callsigns, a tie line from a mounted force to its carrier, and a ring around the own force.
 - Metrics: `http://localhost:4268/metrics` — Prometheus text format (see [Metrics](#metrics)).
 - Control: `http://localhost:4268/api/control/*` — pause, reset, inject (see [Control endpoints](#control-endpoints)).
 - gRPC server reflection is enabled, so `grpcurl` works out of the box:
@@ -37,9 +37,11 @@ dotnet run --project src/adapter/TacticalApi.Simulator.Adapter.Replay
 grpcurl -plaintext localhost:5100 list
 grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.Situation/GetSituationObjects
 grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.Situation/SubscribeSituationObjectEvents
+grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.BlueForceTracking/GetBlueForces
+grpcurl -plaintext localhost:5100 rheinmetall.tactical_api.v0.OwnPose/GetPosition
 ```
 
-With `Adapter.Synthetic` running alongside the Host, its scenario source (see [`Sources.Synthetic`'s README](src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md), enabled by default) immediately populates the situation; the subscribe stream shows it updating every 5 seconds. `Adapter.OpenSky` and `Adapter.Nws` are disabled by default (see each source's own README) since they call live external APIs.
+With `Adapter.Synthetic` running alongside the Host, its scenario source (see [`Sources.Synthetic`'s README](src/adapter/TacticalApi.Simulator.Sources.Synthetic/README.md), enabled by default) immediately populates the situation; the subscribe stream shows it updating every 5 seconds. Its blue force patrol source is on by default too, so `BlueForceTracking` and `OwnPose` come up populated as well rather than empty. `Adapter.OpenSky` and `Adapter.Nws` are disabled by default (see each source's own README) since they call live external APIs.
 
 Each adapter can just as easily point at a different, real TacticalAPI implementation instead of this Host - set that adapter's own `Adapter:Ingest:Address` (e.g. `Adapter__Ingest__Address=http://some-other-host:5100`). See [Configuration](docs/CONFIGURATION.md).
 
@@ -86,7 +88,16 @@ curl -X POST http://localhost:4268/api/control/objects \
   -d '{"situationObjects":[{"symbol":{"identity":{"stringIdentity":"x"},
        "reporter":{"stringIdentity":"me"},"reportingTime":"2026-08-22T07:00:00Z",
        "name":{"content":"HAND INJECTED"}}}]}'               # inject by hand (protobuf JSON, same as grpcurl -d)
+
+curl -X POST http://localhost:4268/api/control/blueforces \
+  -d '{"blueForcesToUpdates":[{"identity":{"stringIdentity":"bf:x"},
+       "lastContactTime":"2026-08-22T07:00:00Z","callsign":"HAND"}]}'   # inject a blue force
+curl -X POST http://localhost:4268/api/control/position \
+  -d '{"position":{"sourceIdentifier":"HAND","pointLocation":
+       {"geoPoint":{"latitudeCoordinate":53.08,"longitudeCoordinate":8.8}}}}'  # set the own position
 ```
+
+`reset` returns all three services to their just-started state, and `pause` freezes all three — a situation frozen while blue forces kept moving would not be frozen.
 
 Injection goes through the same store as every gRPC write — a shortcut past the transport, not past the semantics.
 
@@ -98,6 +109,13 @@ Injection goes through the same store as every gRPC write — a shortcut past th
 tacticalapi_subscriber_events_dropped_total 18956
 tacticalapi_subscriber_events_published_total 20500
 ```
+
+`BlueForceTracking` and `OwnPose` are counted on instruments of their own (`tacticalapi_blue_forces`,
+`tacticalapi_blue_forces_updated_total`, `tacticalapi_blue_forces_expired_total`,
+`tacticalapi_positions_updated_total`, and the matching `*_events_published/dropped_total` pair per
+stream) rather than being added to the numbers above. A blue force re-reports itself on a keep-alive
+cadence whether or not anything moved, so folding those writes in would swamp the number that says how
+busy the actual picture is.
 
 With the default `SubscriberChannelFullMode: DropOldest`, a subscriber that can't keep up silently loses events —
 `TryWrite` returns `true` while discarding an older one. That is now countable, which is what makes
@@ -113,10 +131,10 @@ conformance tool is the other direction — it *verifies* one:
 dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance -- --address http://their-host:5100
 ```
 
-57 checks covering merge, staleness, delete, streaming, tolerance, property shapes and expiry semantics — plus a
-generated check for every case of the contract's three capability oneofs. Every hand-written check uses
-`symbol` + `string_identity` + `point`, so without those an implementation handling only those three would pass
-everything:
+79 checks across all three services of the contract. For `Situation`: merge, staleness, delete, streaming,
+tolerance, property shapes and expiry semantics — plus a generated check for every case of its three capability
+oneofs. Every hand-written check uses `symbol` + `string_identity` + `point`, so without those an implementation
+handling only those three would pass everything:
 
 ```
 Object types accepted: 8 of 11
@@ -134,6 +152,17 @@ outright, **advisory** where the contract is silent and this is merely the readi
 failures print `WARN` and don't fail the run unless you pass `--strict` — telling an implementer they're
 non-conformant over something the contract never mentions is the fastest way to get a tool ignored.
 
+For `BlueForceTracking`, the check worth going out of your way for is the one rule that makes it behave unlike
+the `Situation` service it sits beside: *"all fields must be filled in every call"*. An implementation that
+quietly merges blue force updates the way it merges situation objects passes everything else and then, in the
+field, keeps a callsign or a mount host alive long after its sender stopped reporting it. For `OwnPose`, most
+checks are advisory by necessity — the position handed back is "the one selected as primary position source by
+the application", so an implementation is entitled to accept a fix and keep answering with a different sensor's.
+
+Those two services are also the one thing the suite **cannot clean up after itself**, and it says so before it
+starts: the contract gives `BlueForceTracking` no delete RPC and `OwnPose` no way to un-report a position, so
+what those checks write ages out on the implementation's own keep-alive timeout instead.
+
 `--read-only` runs only the checks that never write, so it's safe against a live situation. `--junit` emits a
 report every CI already renders. Exit codes: 0 conformant, 1 non-conformant, 2 bad arguments, 3 endpoint
 unreachable — so a pipeline can tell "your server is down" from "your server is wrong". See
@@ -143,7 +172,7 @@ unreachable — so a pipeline can tell "your server is down" from "your server i
 
 - [Architecture](docs/ARCHITECTURE.md) — design principles, solution layout, interface semantics implemented
 - [Configuration](docs/CONFIGURATION.md) — `appsettings.json` reference
-- [Extending the simulator](docs/EXTENDING.md) — adding a data source, adding a situation object type
+- [Extending the simulator](docs/EXTENDING.md) — adding a data source, adding a situation object type, adding a blue force or own-position source
 - [Testing](docs/TESTING.md) — unit/E2E test layers, running coverage locally
 - [CI](docs/CI.md) — pipeline stages, running the whole pipeline locally with `act`
 - [Nix](docs/NIX.md) — the dev shell, `direnv`, and the `format`/`ci-local` apps

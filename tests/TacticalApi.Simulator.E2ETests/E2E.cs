@@ -54,6 +54,59 @@ internal static class E2E
         return new UpdateSituationObject { Symbol = symbol };
     }
 
+    internal static UpdateBlueForce BlueForce(
+        string id,
+        DateTimeOffset lastContactTime,
+        string? callsign = null,
+        double? latitude = null,
+        double? longitude = null,
+        Identity? mountHost = null,
+        BlueForceType? type = null)
+    {
+        var update = new UpdateBlueForce
+        {
+            Identity = new Identity { StringIdentity = id },
+            LastContactTime = Timestamp.FromDateTimeOffset(lastContactTime)
+        };
+
+        if (callsign is not null) update.Callsign = callsign;
+        if (mountHost is not null) update.MountHost = mountHost;
+        if (type is not null) update.BlueForceType = type;
+
+        if (latitude is not null && longitude is not null)
+            update.PointLocation = new Point
+            {
+                LocationTime = Timestamp.FromDateTimeOffset(lastContactTime),
+                GeoPoint = new GeoPoint
+                {
+                    LatitudeCoordinate = latitude.Value,
+                    LongitudeCoordinate = longitude.Value
+                }
+            };
+
+        return update;
+    }
+
+    internal static UpdatePositionRequest Position(string source, double latitude, double longitude)
+    {
+        return new UpdatePositionRequest
+        {
+            Position = new UpdatePosition
+            {
+                SourceIdentifier = source,
+                PointLocation = new Point
+                {
+                    LocationTime = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+                    GeoPoint = new GeoPoint
+                    {
+                        LatitudeCoordinate = latitude,
+                        LongitudeCoordinate = longitude
+                    }
+                }
+            }
+        };
+    }
+
     internal static DeleteSituationObject Delete(string id, DateTimeOffset reportingTime)
     {
         return new DeleteSituationObject

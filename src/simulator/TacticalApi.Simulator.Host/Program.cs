@@ -72,6 +72,11 @@ _ = app.Services.GetRequiredService<MetricsCollector>();
 app.UseGrpcWeb(new GrpcWebOptions { DefaultEnabled = true });
 
 app.MapGrpcService<SituationGrpcService>().EnableGrpcWeb();
+
+// The contract's other two services. Every service it defines is implemented, and
+// nothing that isn't in it is - see ARCHITECTURE.md.
+app.MapGrpcService<BlueForceTrackingGrpcService>().EnableGrpcWeb();
+app.MapGrpcService<OwnPoseGrpcService>().EnableGrpcWeb();
 app.MapGrpcReflectionService();
 app.MapHealthChecks("/healthz");
 
@@ -86,13 +91,28 @@ app.MapControlEndpoints();
 
 app.MapGet("/", (SituationStore store,
     SituationEventBroker broker,
+    BlueForceStore blueForces,
+    BlueForceEventBroker blueForceBroker,
+    OwnPoseStore ownPose,
+    PositionEventBroker positionBroker,
+    TimeProvider timeProvider,
     SimulationPause pause,
     IOptionsMonitor<SimulatorOptions> options) => Results.Ok(new
     {
         service = "TacticalAPI Simulator",
-        proto = "rheinmetall.tactical_api.v0.Situation",
+        protos = new[]
+        {
+            "rheinmetall.tactical_api.v0.Situation",
+            "rheinmetall.tactical_api.v0.BlueForceTracking",
+            "rheinmetall.tactical_api.v0.OwnPose"
+        },
         situationObjects = store.Count,
         subscribers = broker.SubscriberCount,
+        blueForces = blueForces.Count,
+        blueForceSubscribers = blueForceBroker.SubscriberCount,
+        positionSources = ownPose.SourceCount,
+        positionSubscribers = positionBroker.SubscriberCount,
+        primaryPositionSource = ownPose.GetPosition(timeProvider.GetUtcNow())?.SourceIdentifier,
         reporterId = options.CurrentValue.ReporterId,
         paused = pause.IsPaused
     }));
@@ -109,6 +129,15 @@ app.MapGet("/ui", (IOptionsMonitor<MapUiOptions> options) =>
 app.MapGet("/api/objects", (SituationStore store, IOptionsMonitor<MapUiOptions> options) =>
     options.CurrentValue.Enabled
         ? Results.Ok(SituationObjectMapper.Map(store.GetSnapshot()))
+        : Results.NotFound());
+
+// Blue forces are their own service, so they're their own map layer rather than
+// being flattened in with situation objects: the GUI draws them differently
+// (callsign, mount relationships, own-force highlight) and a client watching the
+// map should be able to tell which service a track came from.
+app.MapGet("/api/blueforces", (BlueForceStore store, IOptionsMonitor<MapUiOptions> options) =>
+    options.CurrentValue.Enabled
+        ? Results.Ok(BlueForceMapper.Map(store.GetSnapshot()))
         : Results.NotFound());
 app.MapGet("/api/config", (IOptionsMonitor<MapUiOptions> options) =>
 {

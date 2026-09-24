@@ -10,6 +10,15 @@ namespace TacticalApi.Simulator.Tests;
 /// </summary>
 public sealed class ConformanceReportTests
 {
+    /// <summary>
+    ///     A channel these tests never dial. The runner-level behaviour they cover -
+    ///     skipping, and turning a thrown RpcException into a failure - happens before
+    ///     any check touches the wire, but the context builds one client per service
+    ///     up front, so it needs something real to build them from.
+    /// </summary>
+    private static readonly Grpc.Net.Client.GrpcChannel UnusedChannel =
+        Grpc.Net.Client.GrpcChannel.ForAddress("http://localhost:1");
+
     private static readonly ConformanceCheck Check = new(
         "example-check", "An example check", "The contract says so.",
         CheckSeverity.Required, true, false,
@@ -169,7 +178,7 @@ public sealed class ConformanceReportTests
                 new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "gone")));
 
         var reports = await ConformanceRunner.RunAsync(
-            new ConformanceContext(null!, "TEST", "run"), [throwing, Check], new RunSelection(IncludeSlow: true));
+            new ConformanceContext(UnusedChannel, "TEST", "run"), [throwing, Check], new RunSelection(IncludeSlow: true));
 
         Assert.Equal(CheckOutcome.Failed, reports[0].Result.Outcome);
         Assert.Contains("Unavailable", reports[0].Result.Detail, StringComparison.Ordinal);
@@ -183,7 +192,7 @@ public sealed class ConformanceReportTests
             (_, _) => Task.FromResult(CheckResult.Pass()));
 
         var reports = await ConformanceRunner.RunAsync(
-            new ConformanceContext(null!, "TEST", "run"), [slow], new RunSelection());
+            new ConformanceContext(UnusedChannel, "TEST", "run"), [slow], new RunSelection());
 
         Assert.Equal(CheckOutcome.Skipped, Assert.Single(reports).Result.Outcome);
         Assert.Contains("--include-slow", reports[0].Result.Detail, StringComparison.Ordinal);
@@ -275,7 +284,7 @@ public sealed class ConformanceReportTests
     public async Task RunAsync_ReportsSkippedChecksWithTheReason()
     {
         var reports = await ConformanceRunner.RunAsync(
-            new ConformanceContext(null!, "TEST", "run"), [Check], new RunSelection(ReadOnly: true));
+            new ConformanceContext(UnusedChannel, "TEST", "run"), [Check], new RunSelection(ReadOnly: true));
 
         var report = Assert.Single(reports);
         Assert.Equal(CheckOutcome.Skipped, report.Result.Outcome);
@@ -328,9 +337,9 @@ public sealed class ConformanceReportTests
     [Fact]
     public void FormatCatalog_ListsEveryCheckWithItsTags()
     {
-        var catalog = ConformanceReportFormatter.FormatCatalog(SituationContractChecks.All);
+        var catalog = ConformanceReportFormatter.FormatCatalog(TacticalApiContractChecks.All);
 
-        Assert.Contains($"{SituationContractChecks.All.Count} check(s)", catalog, StringComparison.Ordinal);
+        Assert.Contains($"{TacticalApiContractChecks.All.Count} check(s)", catalog, StringComparison.Ordinal);
         Assert.Contains("get-reachable", catalog, StringComparison.Ordinal);
         Assert.Contains("read-only", catalog, StringComparison.Ordinal);
         Assert.Contains("advisory", catalog, StringComparison.Ordinal);

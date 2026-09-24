@@ -20,9 +20,11 @@ public sealed class CombatOutpostDefenseSourceTests
     }
 
     [Fact]
-    public async Task ProduceAsync_AlwaysEmitsPerimeterObservationPostsAndDefendTask()
+    public async Task ProduceAsync_AlwaysEmitsPerimeterAndDefendTaskButNotTheManningItself()
     {
-        // Arrange
+        // The perimeter is a graphic the commander drew and the defend task is an
+        // order - both situation objects. The observation posts manning it report
+        // themselves, which makes them blue forces instead.
         var options = new CombatOutpostDefenseOptions { ObservationPostCount = 3, DayContactProbability = 0 };
         var source = CreateSource(options);
 
@@ -33,13 +35,49 @@ public sealed class CombatOutpostDefenseSourceTests
         Assert.Contains(updates, u =>
             u.TypeCase == UpdateSituationObject.TypeOneofCase.Symbol &&
             u.Symbol.Identity.StringIdentity == "cop:perimeter");
-        var opCount = updates.Count(u =>
-            u.TypeCase == UpdateSituationObject.TypeOneofCase.Symbol &&
-            u.Symbol.Identity.StringIdentity.StartsWith("cop:op:", StringComparison.Ordinal));
-        Assert.Equal(options.ObservationPostCount, opCount);
         Assert.Contains(updates, u =>
             u.TypeCase == UpdateSituationObject.TypeOneofCase.ActionTask &&
             u.ActionTask.Identity.StringIdentity == "cop:task:defend");
+        Assert.DoesNotContain(updates, u =>
+            u.TypeCase == UpdateSituationObject.TypeOneofCase.Symbol &&
+            u.Symbol.Identity.StringIdentity.StartsWith("cop:op:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ProduceBlueForcesAsync_EmitsTheCommandPostAndEveryObservationPost()
+    {
+        // Arrange
+        var options = new CombatOutpostDefenseOptions { ObservationPostCount = 3, DayContactProbability = 0 };
+        var source = CreateSource(options);
+
+        // Act
+        var blueForces = await source.ProduceBlueForcesAsync(CancellationToken.None);
+
+        // Assert - one CP plus one per OP.
+        Assert.Equal(options.ObservationPostCount + 1, blueForces.Count);
+        Assert.All(blueForces, bf =>
+        {
+            Assert.NotNull(bf.LastContactTime);
+            Assert.NotNull(bf.PointLocation?.GeoPoint);
+        });
+
+        var commandPost = Assert.Single(blueForces, bf => bf.BlueForceType.IsLeader);
+        Assert.Equal(CombatOutpostDefenseSource.OwnBlueForceIdentity, commandPost.Identity.StringIdentity);
+        Assert.Equal(options.ObservationPostCount,
+            blueForces.Count(bf => bf.Identity.StringIdentity.StartsWith("cop:bf:op:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task ProduceBlueForcesAsync_ReportsGarrisonStrengthOnTheCommandPost()
+    {
+        // The number that says whether the COP is still holding, carried where the
+        // contract puts text about a blue force.
+        var source = CreateSource(new CombatOutpostDefenseOptions { GarrisonStrength = 40, DayContactProbability = 0 });
+
+        var blueForces = await source.ProduceBlueForcesAsync(CancellationToken.None);
+        var commandPost = Assert.Single(blueForces, bf => bf.BlueForceType.IsLeader);
+
+        Assert.Contains("40/40 effective", commandPost.Callsign, StringComparison.Ordinal);
     }
 
     [Fact]

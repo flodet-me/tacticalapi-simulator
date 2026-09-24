@@ -18,12 +18,19 @@ public sealed class SimulatorMetrics : IDisposable
     /// <summary>Meter name every instrument here is published under.</summary>
     public const string MeterName = "TacticalApi.Simulator";
 
+    private readonly Counter<long> _blueForceEventsDropped;
+    private readonly Counter<long> _blueForceEventsPublished;
+    private readonly Counter<long> _blueForcesExpired;
+    private readonly Counter<long> _blueForcesUpdated;
     private readonly Counter<long> _eventsDropped;
     private readonly Counter<long> _eventsPublished;
     private readonly Counter<long> _faultsInjected;
     private readonly Meter _meter;
     private readonly Counter<long> _objectsDeleted;
     private readonly Counter<long> _objectsExpired;
+    private readonly Counter<long> _positionEventsDropped;
+    private readonly Counter<long> _positionEventsPublished;
+    private readonly Counter<long> _positionsUpdated;
     private readonly Counter<long> _updatesApplied;
     private readonly Counter<long> _updatesRejected;
     private readonly Counter<long> _updatesStale;
@@ -67,6 +74,35 @@ public sealed class SimulatorMetrics : IDisposable
         _eventsDropped = _meter.CreateCounter<long>(
             "tacticalapi_subscriber_events_dropped_total", "events",
             "Change events dropped because a subscriber's bounded channel was full.");
+
+        // --- BlueForceTracking -------------------------------------------------
+        // Kept apart from the situation counters above rather than tagged onto
+        // them: a blue force re-reports itself on a keep-alive cadence whether or
+        // not anything moved, so folding those writes in with situation traffic
+        // would swamp the number that says how busy the actual picture is.
+        _blueForcesUpdated = _meter.CreateCounter<long>(
+            "tacticalapi_blue_forces_updated_total", "blueforces",
+            "Blue forces added or updated via AddOrUpdateBlueForces.");
+        _blueForcesExpired = _meter.CreateCounter<long>(
+            "tacticalapi_blue_forces_expired_total", "blueforces",
+            "Blue forces implicitly deleted after their keep-alive timeout elapsed.");
+        _blueForceEventsPublished = _meter.CreateCounter<long>(
+            "tacticalapi_blue_force_events_published_total", "events",
+            "Blue force changes written to subscriber channels (counted once per subscriber).");
+        _blueForceEventsDropped = _meter.CreateCounter<long>(
+            "tacticalapi_blue_force_events_dropped_total", "events",
+            "Blue force changes dropped because a subscriber's bounded channel was full.");
+
+        // --- OwnPose -----------------------------------------------------------
+        _positionsUpdated = _meter.CreateCounter<long>(
+            "tacticalapi_positions_updated_total", "positions",
+            "Own-position updates accepted via UpdatePosition.");
+        _positionEventsPublished = _meter.CreateCounter<long>(
+            "tacticalapi_position_events_published_total", "events",
+            "Primary-position changes written to subscriber channels (counted once per subscriber).");
+        _positionEventsDropped = _meter.CreateCounter<long>(
+            "tacticalapi_position_events_dropped_total", "events",
+            "Primary-position changes dropped because a subscriber's bounded channel was full.");
 
         _faultsInjected = _meter.CreateCounter<long>(
             "tacticalapi_faults_injected_total", "faults",
@@ -116,6 +152,48 @@ public sealed class SimulatorMetrics : IDisposable
         _eventsDropped.Add(1);
     }
 
+    /// <summary>Records blue forces added or updated by one AddOrUpdateBlueForces batch.</summary>
+    public void RecordBlueForcesUpdated(int count)
+    {
+        if (count > 0) _blueForcesUpdated.Add(count);
+    }
+
+    /// <summary>Records blue forces implicitly deleted by the keep-alive timeout sweeper.</summary>
+    public void RecordBlueForcesExpired(int count)
+    {
+        if (count > 0) _blueForcesExpired.Add(count);
+    }
+
+    /// <summary>Records a successful write into one blue force subscriber's channel.</summary>
+    public void RecordBlueForceEventPublished()
+    {
+        _blueForceEventsPublished.Add(1);
+    }
+
+    /// <summary>Records a blue force change lost because a subscriber channel overflowed.</summary>
+    public void RecordBlueForceEventDropped()
+    {
+        _blueForceEventsDropped.Add(1);
+    }
+
+    /// <summary>Records one accepted own-position update.</summary>
+    public void RecordPositionUpdated()
+    {
+        _positionsUpdated.Add(1);
+    }
+
+    /// <summary>Records a successful write into one position subscriber's channel.</summary>
+    public void RecordPositionEventPublished()
+    {
+        _positionEventsPublished.Add(1);
+    }
+
+    /// <summary>Records a position change lost because a subscriber channel overflowed.</summary>
+    public void RecordPositionEventDropped()
+    {
+        _positionEventsDropped.Add(1);
+    }
+
     /// <summary>Records an injected fault of the given kind (see the Host's fault-injection options).</summary>
     public void RecordFaultInjected(string kind)
     {
@@ -140,5 +218,29 @@ public sealed class SimulatorMetrics : IDisposable
         _meter.CreateObservableGauge(
             "tacticalapi_subscribers", () => (long)observe(), "subscribers",
             "Active SubscribeSituationObjectEvents streams.");
+    }
+
+    /// <summary>Publishes the current blue force count as an observable gauge; see <see cref="RegisterSituationObjectCount" />.</summary>
+    public void RegisterBlueForceCount(Func<int> observe)
+    {
+        _meter.CreateObservableGauge(
+            "tacticalapi_blue_forces", () => (long)observe(), "blueforces",
+            "Blue forces currently tracked.");
+    }
+
+    /// <summary>Publishes the current blue force subscriber count as an observable gauge.</summary>
+    public void RegisterBlueForceSubscriberCount(Func<int> observe)
+    {
+        _meter.CreateObservableGauge(
+            "tacticalapi_blue_force_subscribers", () => (long)observe(), "subscribers",
+            "Active SubscribeBlueForceEvents streams.");
+    }
+
+    /// <summary>Publishes the current position subscriber count as an observable gauge.</summary>
+    public void RegisterPositionSubscriberCount(Func<int> observe)
+    {
+        _meter.CreateObservableGauge(
+            "tacticalapi_position_subscribers", () => (long)observe(), "subscribers",
+            "Active SubscribePositionChangedEvents streams.");
     }
 }

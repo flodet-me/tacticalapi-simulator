@@ -254,4 +254,22 @@ public sealed class SituationStoreTests
         Assert.Equal(1, swept);
         Assert.Empty(store.GetSnapshot());
     }
+
+    [Fact]
+    public void SweepExpired_ThenReReported_BringsTheObjectBack()
+    {
+        // The case that makes the rule matter in a long-running simulator: nobody
+        // deleted this object on purpose, it simply outlived its expiry_time, and its
+        // source is still reporting it.
+        var store = TestHelpers.CreateStore();
+        var t0 = DateTimeOffset.UtcNow;
+
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("t1", t0, "ALPHA", expiry: t0.AddSeconds(30))]);
+        Assert.Equal(1, store.SweepExpired(t0.AddMinutes(1), TestHelpers.TestReporterId));
+        Assert.Empty(store.GetSnapshot());
+
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("t1", t0.AddMinutes(2), "ALPHA", expiry: t0.AddMinutes(3))]);
+
+        Assert.Single(store.GetSnapshot());
+    }
 }

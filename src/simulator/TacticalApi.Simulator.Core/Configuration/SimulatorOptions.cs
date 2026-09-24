@@ -4,7 +4,8 @@ namespace TacticalApi.Simulator.Core.Configuration;
 
 /// <summary>
 ///     Root options for the simulator, bound from the "Simulator" configuration
-///     section. Consumed via <c>IOptionsMonitor&lt;SimulatorOptions&gt;</c> so
+///     section - covering all three services of the contract (Situation,
+///     BlueForceTracking, OwnPose). Consumed via <c>IOptionsMonitor&lt;SimulatorOptions&gt;</c> so
 ///     edits to appsettings.json apply at runtime without a restart.
 /// </summary>
 public sealed class SimulatorOptions
@@ -26,4 +27,10 @@ public sealed class SimulatorOptions
 
     /// <summary>Throughput/capacity tuning knobs; see <see cref="PerformanceOptions" />.</summary>
     public PerformanceOptions Performance { get; set; } = new();
+
+    /// <summary>Blue force tracking settings; see <see cref="BlueForceOptions" />.</summary>
+    public BlueForceOptions BlueForce { get; set; } = new();
+
+    /// <summary>Own position settings; see <see cref="OwnPoseOptions" />.</summary>
+    public OwnPoseOptions OwnPose { get; set; } = new();
 }

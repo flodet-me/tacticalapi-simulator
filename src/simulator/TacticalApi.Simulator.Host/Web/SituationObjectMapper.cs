@@ -310,7 +310,18 @@ public static class SituationObjectMapper
 
     private static MapSymbolIdentifier? SymbolIdentifierText(DataPropertySymbolIdentifier? property)
     {
-        var content = property?.Content;
+        return SymbolIdentifierText(property?.Content);
+    }
+
+    /// <summary>
+    ///     Flattens a raw <see cref="SymbolIdentifier" /> to the SIDC string the
+    ///     frontend's renderer takes. Shared with <see cref="BlueForceMapper" />,
+    ///     whose blue forces carry the identifier directly rather than wrapped in a
+    ///     data property - the symbology is the same either way, and so is the icon
+    ///     the GUI ends up drawing.
+    /// </summary>
+    internal static MapSymbolIdentifier? SymbolIdentifierText(SymbolIdentifier? content)
+    {
         var sidc = content?.IdentifierCase switch
         {
             SymbolIdentifier.IdentifierOneofCase.StringIdentifier => content.StringIdentifier,

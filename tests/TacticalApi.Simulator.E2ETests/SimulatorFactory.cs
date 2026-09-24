@@ -81,21 +81,43 @@ public class SimulatorFactory : WebApplicationFactory<Program>
         }
     }
 
-    /// <summary>Native gRPC client (HTTP/2), real sockets when <see cref="_useRealServer" />.</summary>
-    public Situation.SituationClient CreateGrpcClient()
+    /// <summary>
+    ///     Native gRPC channel (HTTP/2), real sockets when <see cref="_useRealServer" />.
+    ///     Exposed as the channel rather than only as one client because the contract
+    ///     has three services on it - a test that needs blue forces or own pose builds
+    ///     its own client from the same channel, exactly as a real caller would.
+    /// </summary>
+    public GrpcChannel CreateGrpcChannel()
     {
         if (_useRealServer)
         {
             _ = Services; // forces WebApplicationFactory to build/start the host (incl. the real Kestrel one)
             EnableH2C();
-            return new Situation.SituationClient(GrpcChannel.ForAddress("http://localhost:5100"));
+            return GrpcChannel.ForAddress("http://localhost:5100");
         }
 
-        var channel = GrpcChannel.ForAddress(Server.BaseAddress, new GrpcChannelOptions
+        return GrpcChannel.ForAddress(Server.BaseAddress, new GrpcChannelOptions
         {
             HttpHandler = Server.CreateHandler()
         });
-        return new Situation.SituationClient(channel);
+    }
+
+    /// <summary>Native gRPC <c>Situation</c> client; see <see cref="CreateGrpcChannel" />.</summary>
+    public Situation.SituationClient CreateGrpcClient()
+    {
+        return new Situation.SituationClient(CreateGrpcChannel());
+    }
+
+    /// <summary>Native gRPC <c>BlueForceTracking</c> client; see <see cref="CreateGrpcChannel" />.</summary>
+    public BlueForceTracking.BlueForceTrackingClient CreateBlueForceClient()
+    {
+        return new BlueForceTracking.BlueForceTrackingClient(CreateGrpcChannel());
+    }
+
+    /// <summary>Native gRPC <c>OwnPose</c> client; see <see cref="CreateGrpcChannel" />.</summary>
+    public OwnPose.OwnPoseClient CreateOwnPoseClient()
+    {
+        return new OwnPose.OwnPoseClient(CreateGrpcChannel());
     }
 
     /// <summary>

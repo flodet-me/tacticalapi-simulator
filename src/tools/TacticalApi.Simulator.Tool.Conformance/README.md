@@ -1,7 +1,7 @@
 # TacticalApi.Simulator.Tool.Conformance
 
-Point it at a TacticalAPI `Situation` endpoint and find out whether the thing answering there actually behaves the
-way the contract says.
+Point it at a TacticalAPI endpoint and find out whether the thing answering there actually behaves the way the
+contract says — across all three of its services: `Situation`, `BlueForceTracking` and `OwnPose`.
 
 This repository has always tested these rules — against its own Host, from inside its own test project. That proves
 the simulator is right; it says nothing about the implementation you are integrating with. This is the same rules
@@ -48,17 +48,24 @@ Telling an implementer their server is non-conformant because it differs from us
 mentions would be the fastest way to get this tool ignored. Each advisory check's `requirement` text says plainly
 what it is assuming and why the other reading is defensible.
 
-## It writes to the situation it is checking
+## It writes to the implementation it is checking
 
 There is no way to verify merge semantics without writing something. By default the suite creates objects under a
 `conformance:<run-id>:` identity prefix, unique per run, and deletes them again — each check cleans up after
 itself, and the prefix is a safety net rather than the plan. It prints this before it starts.
 
-`--read-only` runs only the checks that never write, so it is safe to point at a live situation. You get three
-checks instead of thirty-three, but they are real ones: the endpoint answers, its snapshot is well-formed, and it
-accepts a subscription.
+**Blue forces and positions are the exception, and it is the contract's doing.** `BlueForceTracking` has no delete
+RPC at all — "deletion is done implicitly when a timeout defined by the application is reached" — and `OwnPose`
+has no way to un-report a position. What those checks write therefore cannot be cleaned up by being more careful
+about it; it ages out on the implementation's own keep-alive timeout. The tool says so before it starts too.
+
+`--read-only` runs only the checks that never write, so it is safe to point at a live situation. You get a handful
+of checks instead of all of them, but they are real ones, and there are now some per service: each endpoint
+answers, its snapshot is well-formed, and it accepts a subscription.
 
 ## What it checks
+
+### `Situation`
 
 **Read-only** (safe against a live situation)
 
@@ -100,6 +107,12 @@ accepts a subscription.
 | `unknown-delete-tolerated` | Deleting an identity that doesn't exist is not an error |
 | `empty-batch-accepted` | A request carrying no objects succeeds |
 | `repeated-update-is-idempotent` | Sending the identical update twice leaves the object unchanged |
+| `update-after-delete-revives` | An update newer than the delete that hid an object brings it back |
+
+`update-after-delete-revives` is advisory because the contract doesn't settle it, but the two readings are not
+equally harmless. If a delete is permanent, the identity is poisoned: every later write is acknowledged as
+successful while the object stays invisible — and since expired objects are deleted automatically, any track that
+outlives its `expiry_time` and is then reported again by the source that still sees it is lost the same way.
 
 **Property shapes** — the ones a merge written against the common case tends to get half-right.
 
@@ -128,6 +141,54 @@ have to be materialized into whole `SituationObject`s.
 | `repeated-update-is-idempotent` | advisory | Sending the identical update twice leaves the object unchanged |
 | `typeless-update-rejected` | advisory | An update carrying no object type at all is rejected |
 | `error-header-explains` | advisory | A rejected request explains itself in `header.error_message` |
+
+### `BlueForceTracking`
+
+| Id | Severity | Rule |
+|----|----------|------|
+| `blue-force-get-reachable` | required | `GetBlueForces` answers with a successful header |
+| `blue-force-snapshot-well-formed` | required | Every blue force has an identity and a `last_contact_time`, and isn't flagged deleted |
+| `blue-force-subscribe-opens` | required | `SubscribeBlueForceEvents` accepts a subscription and streams without error |
+| `blue-force-add-get-roundtrip` | required | An added blue force comes back with its fields intact |
+| `blue-force-update-replaces-every-field` | required | A second update that omits a field **clears** it |
+| `blue-force-missing-identity-rejected` | required | An update with no identity is refused |
+| `blue-force-missing-contact-time-rejected` | advisory | An update with no `last_contact_time` is refused |
+| `blue-force-type-flags-combine` | required | `is_vehicle`, `is_unmanned` and `is_leader` can all be true at once |
+| `blue-force-mount-host-roundtrip` | required | `mount_host` survives a round trip |
+| `blue-force-batch-applies-every-force` | required | Every blue force in one call is applied |
+| `blue-force-empty-batch-accepted` | advisory | A call carrying no blue forces is accepted |
+| `blue-force-subscribe-snapshot-first` | required | A pre-existing blue force arrives in the initial snapshot |
+| `blue-force-subscribe-live-events` | required | A blue force added while subscribed arrives on the stream |
+| `blue-force-keepalive-timeout-deletes` | advisory, slow | An abandoned blue force is eventually deleted |
+
+`blue-force-update-replaces-every-field` is the one to look at first. It is the single rule that makes this service
+behave unlike the `Situation` service beside it — *"In contrast to the UpdateSituationObject message all fields
+must be filled in every call"* — and an implementation that quietly reuses its situation-object merge passes
+everything else here and then, in the field, keeps a callsign or a mount host alive long after its sender stopped
+reporting one.
+
+`blue-force-keepalive-timeout-deletes` is advisory and reports **inconclusive** (a skip, not a failure) if the blue
+force is still there after 45s. The timeout is "defined by the application", so an implementation with a longer one
+is not thereby wrong — and failing it would push implementers towards a short timeout for this tool's sake.
+
+### `OwnPose`
+
+| Id | Severity | Rule |
+|----|----------|------|
+| `own-pose-get-reachable` | required | `GetPosition` answers with a successful header |
+| `own-pose-subscribe-opens` | required | `SubscribePositionChangedEvents` accepts a subscription and streams without error |
+| `own-pose-position-well-formed` | advisory | A position with no coordinates is flagged `is_invalid_or_expired` |
+| `own-pose-update-accepted` | required | `UpdatePosition` accepts a fix from a named source |
+| `own-pose-missing-source-rejected` | required | An update with no `source_identifier` is refused |
+| `own-pose-update-becomes-primary` | advisory | After an update, `GetPosition` returns that source's fix |
+| `own-pose-subscribe-initial-position` | advisory | A subscription is sent the current position before anything changes |
+| `own-pose-subscribe-live-events` | advisory | A position reported after subscribing arrives on the stream |
+
+Most of these are advisory by necessity rather than by caution. The position handed back is "the one selected as
+primary position source by the application", so an implementation is entitled to accept this tool's update and keep
+answering with a different sensor's fix — calling that non-conformant would be this tool substituting its own
+policy for the application's. What stays required is what the contract does state outright: the calls work, the
+header says so, and a source identifier is mandatory.
 
 ## Capability matrices
 
@@ -177,6 +238,10 @@ geometry.
 The contract states both outright — *"Expired symbols are automatically marked as deleted"*, *"It's possible to
 extend this time"* — but gives no deadline for either, so these allow 30s and 10s respectively. Those numbers are
 judgement calls, not contract: too short and the extension check passes merely because nothing has swept yet.
+
+`blue-force-keepalive-timeout-deletes` (above) is the third slow check, and the one place the same judgement call
+goes the other way: its allowance is 45s and running past it reports *inconclusive* rather than a failure, because
+unlike `expiry_time` the blue force timeout is the application's to choose.
 
 ## Options
 
@@ -238,7 +303,8 @@ trusted to judge the others. `SituationObjects.cs` therefore duplicates descript
 - `ConformanceSuiteE2ETests` (E2E) — runs the whole suite against this repo's own Host and requires every check to
   pass; runs it against a Host deliberately configured to reject every write and requires a *required* check to
   fail; proves `--read-only` leaves the situation byte-for-byte unchanged; proves a full run leaves nothing behind;
-  and asserts there is one generated check per object type in the contract.
+  asserts there is one generated check per object type in the contract; and asserts all three services are actually
+  covered by the default run, since a suite that quietly stopped checking two of them would pass more easily.
 
 A checker that fails its own reference implementation is worthless when pointed at someone else's; one that passes
 everything is worse.
