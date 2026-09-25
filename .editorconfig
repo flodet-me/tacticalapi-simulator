@@ -8,10 +8,16 @@ indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true
 
-[*.{csproj,props,targets,sln,json,yml,yaml}]
+# .slnx (not .sln) is this repo's solution format; .runsettings is XML too.
+[*.{csproj,props,targets,sln,slnx,json,yml,yaml,xml,runsettings}]
 indent_size = 2
 
 [*.nix]
+indent_size = 2
+
+# Markdown: 2-space nested lists. Trailing whitespace is still trimmed
+# repo-wide, so use a backslash rather than two spaces for a hard break.
+[*.md]
 indent_size = 2
 
 [*.{html,htm}]

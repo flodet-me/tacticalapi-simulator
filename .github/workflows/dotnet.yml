@@ -61,8 +61,8 @@ jobs:
           # agree - see docs/CI.md. Not run via Nix itself: this workflow
           # otherwise needs no Nix install (see docs/NIX.md), so this fetches
           # NixOS/nixfmt's standalone static binary release instead.
-          curl -sL -o nixfmt "https://github.com/NixOS/nixfmt/releases/download/v1.2.0/nixfmt"
-          echo "aa43e06e2e98d07f9393a8dc73978e0df79bad15d7f84fcd838e15557eb056ee  nixfmt" | sha256sum -c -
+          curl -sL -o nixfmt "https://github.com/NixOS/nixfmt/releases/download/v1.5.0/nixfmt"
+          echo "aa029247ab89c897e2f3948463967553f902f86e86e3402fa28cb29c4a44f745  nixfmt" | sha256sum -c -
           chmod +x nixfmt
           ./nixfmt --check $(git ls-files '*.nix')
 
@@ -76,11 +76,37 @@ jobs:
           # content and aligned multi-line C#/Dockerfile continuations as violations
           # even though they're valid, so real indentation correctness for .cs and
           # .nix is left to dotnet format and nixfmt above instead. See docs/CI.md.
-          EC_VERSION=3.8.0
-          curl -sL -o ec.tar.gz "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${EC_VERSION}/ec-linux-amd64.tar.gz"
-          echo "613bd88f34165a334adcb6b7e92a123c9de0eada65846d31af63613b779ff3be  ec.tar.gz" | sha256sum -c -
-          tar -xzf ec.tar.gz bin/ec-linux-amd64
-          ./bin/ec-linux-amd64
+          # v4 renamed both the release asset (ec-linux-amd64 ->
+          # editorconfig-checker-linux-amd64) and the binary inside it
+          # (bin/ec-linux-amd64 -> editorconfig-checker at the archive root).
+          EC_VERSION=4.0.2
+          curl -sL -o ec.tar.gz "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${EC_VERSION}/editorconfig-checker-linux-amd64.tar.gz"
+          echo "44efaef3ed14c6ab52eb87481d78e5e5c204796dccf26e2f4598a61ba17f8003  ec.tar.gz" | sha256sum -c -
+          tar -xzf ec.tar.gz editorconfig-checker
+          ./editorconfig-checker
+
+      - name: Check formatting (*.json, *.md)
+        run: |
+          set -euo pipefail
+          # The structural layer editorconfig-checker can't see: it only checks
+          # charset/EOL/trailing-whitespace/final-newline, not whether a JSON file
+          # is canonically formatted or a markdown heading level skips a step.
+          # dprint ships a standalone static binary, pinned + sha256-verified the
+          # same way nixfmt and editorconfig-checker are above, and to the same
+          # version .nix/shell.nix's nixpkgs input resolves today. Its json plugin
+          # is fetched from plugins.dprint.dev at run time (pinned by version in
+          # dprint.json) - the one download here that isn't sha256-verified.
+          DPRINT_VERSION=0.57.4
+          curl -sL -o dprint.zip "https://github.com/dprint/dprint/releases/download/${DPRINT_VERSION}/dprint-x86_64-unknown-linux-gnu.zip"
+          echo "1d26357d8bc66898d4ecc7dafca3d2971cfe222ba487228bd2ce5c3b3a309c33  dprint.zip" | sha256sum -c -
+          unzip -q -o dprint.zip dprint
+          chmod +x dprint
+          ./dprint check
+          # markdownlint-cli2 is Node-based (no standalone binary), so unlike every
+          # other check here it installs from npm - pinned by exact version. The
+          # runner image already has Node; see docs/CI.md.
+          npm install -g markdownlint-cli2@0.23.2
+          markdownlint-cli2
 
       - name: Scan for vulnerable NuGet packages
         run: |

@@ -1,0 +1,19 @@
+// Markdown structure checks - the layer editorconfig-checker can't see (it only
+// checks charset/EOL/trailing-whitespace/final-newline). See docs/CI.md.
+{
+  "globs": [
+    "**/*.md",
+    "!external/**",
+    "!.direnv/**",
+    "!**/obj/**",
+    "!**/bin/**"
+  ],
+  "config": {
+    // Line length: this repo's docs are deliberately table-heavy and a table row
+    // is one line however long its cells are. Wrapping them would defeat the point.
+    "MD013": false,
+    // Duplicate headings are fine across sections ("Configuration" per source),
+    // just not as direct siblings.
+    "MD024": { "siblings_only": true }
+  }
+}

@@ -1,34 +1,38 @@
 # Nix dev environment
 
-`flake.nix` provides a reproducible dev shell and a couple of helper apps, so you don't need the .NET SDK, `act`, `grpcurl`, etc. installed globally to work on this repo. None of it is required - the plain `dotnet` CLI (see the [README](../README.md)) works fine on its own - but it saves pinning versions yourself.
+`flake.nix` gives a reproducible dev shell plus a few helper apps. None of it is required — the plain `dotnet` CLI ([README](../README.md)) works fine — it just saves pinning versions yourself.
 
-**Prerequisite:** [Nix](https://nixos.org/download/) with flakes enabled (`experimental-features = nix-command flakes` in `nix.conf`, or pass `--extra-experimental-features "nix-command flakes"` on each command below).
+**Prerequisite:** [Nix](https://nixos.org/download/) with flakes enabled (`experimental-features = nix-command flakes` in `nix.conf`, or `--extra-experimental-features "nix-command flakes"` per command).
 
 ## Entering the shell
 
 ```bash
-nix develop
+nix develop      # or: direnv allow, once — .envrc is just `use flake`
 ```
 
-Drops you into a shell with everything `.nix/shell.nix` lists on `PATH`: the pinned .NET 10 SDK (`dotnet-sdk_10`), `icu`/`openssl`/`zlib` (.NET's native dependencies, also wired into `LD_LIBRARY_PATH`), `act` (see [CI](CI.md)), `gh` (the GitHub CLI - PRs, issues, workflow runs), `grpcurl` (see the [README](../README.md)), `tshark` (inspect gRPC/gRPC-Web wire traffic), `jq`, `yq-go`, and `python3` (the latter two mainly for poking at `.github/workflows/dotnet.yml` and running the coverage-gate/license-check snippets embedded in it outside of a full `act` run), and a `jdk` - not used by anything above, but SonarLint's C#/.NET analyzer runs on the JVM, so the IDE plugin (VS Code, JetBrains, Visual Studio) needs a JDK on `PATH` to run any analysis at all. The shell hook also puts `~/.dotnet/tools` on `PATH`, for any `dotnet tool install --global` tools.
+With [direnv](https://direnv.net/) the shell loads on `cd` in and unloads on `cd` out; `.direnv/` is gitignored.
 
-**Automatic, via direnv:** `.envrc` is just `use flake`. With [direnv](https://direnv.net/) installed, `direnv allow` once in the repo root, and the shell above loads automatically on `cd` into the directory (and unloads on `cd` out) - no need to remember to run `nix develop` yourself. `.direnv/` (its cache) is gitignored.
+What `.nix/shell.nix` puts on `PATH`:
+
+| Tool | For |
+| --- | --- |
+| `dotnet-sdk_10` + `icu`/`openssl`/`zlib` | .NET and its native deps (also wired into `LD_LIBRARY_PATH`) |
+| `act` | running CI locally ([CI](CI.md)) |
+| `gh` | GitHub CLI — PRs, issues, workflow runs |
+| `grpcurl` | poking the gRPC surface ([README](../README.md)) |
+| `tshark` | inspecting gRPC / gRPC-Web wire traffic |
+| `jq`, `yq-go`, `python3` | poking at `.github/workflows/dotnet.yml` and running its embedded coverage-gate / license-check snippets outside a full `act` run |
+| `markdownlint-cli2` | markdown structure checks ([CI](CI.md)) |
+| `dprint` | JSON formatting ([CI](CI.md)) |
+| `jdk` | nothing above needs it — SonarLint's C#/.NET analyzer runs on the JVM, so the IDE plugin needs a JDK on `PATH` to analyze at all |
+
+The hook also adds `~/.dotnet/tools`, for anything installed with `dotnet tool install --global`.
 
 ## Apps
 
-```bash
-nix run .#format      # applies formatting fixes across the whole repo in one shot: dotnet format for *.cs,
-                       # nixfmt for *.nix, and charset/line-ending/trailing-whitespace/final-newline fixes for
-                       # every other tracked file (not --verify-no-changes; that's what CI's three formatting
-                       # steps and `nix run .#editorconfig-check` run instead, see docs/CI.md)
-
-nix run .#ci-local     # runs .github/workflows/dotnet.yml locally via act (needs Docker running); see docs/CI.md
-                       # for what it covers, its caveats, and passing extra `act` flags after `--`
-
-nix run .#editorconfig-check   # nixfmt --check on every *.nix file, then editorconfig-checker on every tracked
-                                # file - the same two checks CI's "Check formatting" steps run; see docs/CI.md
-```
-
-## `nix fmt`
-
-Formats this repo's own `*.nix` files (`nixfmt`, set as the flake's `formatter`) - unrelated to the C# solution, which `nix run .#format` handles instead.
+| Command | Does |
+| --- | --- |
+| `nix run .#format` | All formatting fixes in one shot: `dotnet format` for `*.cs`, `nixfmt` for `*.nix`, `dprint` for `*.json`, `markdownlint-cli2 --fix` for `*.md`, charset/EOL/trailing-whitespace/final-newline for every other tracked file. Applies, does not verify. |
+| `nix run .#editorconfig-check` | The read-only counterpart: `nixfmt --check`, `dprint check`, `markdownlint-cli2` and `editorconfig-checker`, i.e. CI's formatting steps 2–5 ([CI](CI.md)). Step 1 is plain `dotnet format --verify-no-changes`. |
+| `nix run .#ci-local` | Runs `.github/workflows/dotnet.yml` via act (needs Docker). Extra `act` flags go after `--`; caveats in [CI](CI.md). |
+| `nix fmt` | This repo's own `*.nix` files only (`nixfmt`, the flake's `formatter`) — unrelated to the C# solution. |

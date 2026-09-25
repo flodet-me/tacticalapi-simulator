@@ -15,6 +15,8 @@ pkgs.mkShell {
     pkgs.python3 # Run the inline scripts dotnet.yml uses for the coverage gate and license allow-list checks
     pkgs.nixfmt # Formats/checks *.nix files (also the flake's `formatter`, and what `nix run .#editorconfig-check` calls); see docs/CI.md
     pkgs.editorconfig-checker # Checks every tracked file against .editorconfig (charset/EOL/trailing-whitespace/final-newline); see docs/CI.md
+    pkgs.markdownlint-cli2 # Checks *.md structure - headings, fences, tables (.markdownlint-cli2.jsonc); see docs/CI.md
+    pkgs.dprint # Formats/checks *.json (dprint.json); see docs/CI.md
   ];
 
   # Set environment variables for .NET

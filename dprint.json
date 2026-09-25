@@ -1,0 +1,15 @@
+{
+  "json": {
+    "indentWidth": 2
+  },
+  "includes": ["**/*.json"],
+  "excludes": [
+    "external/**",
+    ".direnv/**",
+    "**/obj/**",
+    "**/bin/**"
+  ],
+  "plugins": [
+    "https://plugins.dprint.dev/json-0.20.0.wasm"
+  ]
+}

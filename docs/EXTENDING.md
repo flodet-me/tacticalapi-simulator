@@ -1,15 +1,17 @@
 # Extending the simulator
 
-Adding a data source or an object type is what this document is about. Two nearby things it is *not* about:
+Two nearby things this document is *not* about:
 
-- Anything driven by the protobuf descriptors (`SituationObjectToUpdate`, `ReplayTimestamps`) needs no work when a new object type appears — that is why they are written that way. See [Architecture](ARCHITECTURE.md#interface-semantics-implemented). They cover the `Situation` service only; recordings are `Situation` traffic, deliberately.
-- A new Host-side capability that isn't part of the contract (another fault, another control endpoint) belongs beside the existing ones in `Host/Faults/` or `Host/Control/`, never as a new RPC on the `Situation` service.
+| Not this | Because |
+| --- | --- |
+| Descriptor-driven code (`SituationObjectToUpdate`, `ReplayTimestamps`) | Needs no work when a new object type appears — that is why it is written that way ([Architecture](ARCHITECTURE.md#interface-semantics-implemented)). `Situation` only; recordings are `Situation` traffic, deliberately. |
+| A Host capability outside the contract (another fault, another control endpoint) | Belongs beside the existing ones in `Host/Faults/` or `Host/Control/`, never as a new RPC. |
 
 ## Adding your own data source (e.g. an AIS ship tracker)
 
-[`Sources.OpenSky`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) is a working example of exactly this pattern (a live, HTTP-polling, single-object-type source) — read its README alongside this section. If your API naturally produces more than one kind of situation object (text, a location, a warning area, ...) from a single feed, [`Sources.Nws`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) is the example to look at instead — `ProduceAsync` just returns a mixed batch of `UpdateSituationObject`s built by hand alongside `TrackUpdateFactory.CreateSymbolUpdate(...)`, there's no special multi-type mechanism required.
+Worked examples to read alongside this: [`Sources.OpenSky`](../src/adapter/TacticalApi.Simulator.Sources.OpenSky/README.md) for a live HTTP-polling single-type source, [`Sources.Nws`](../src/adapter/TacticalApi.Simulator.Sources.Nws/README.md) when one feed yields several object kinds — `ProduceAsync` just returns a mixed batch, there is no multi-type mechanism.
 
-1. Implement `ISimulationSource` — fetch your data and map it to `UpdateSituationObject`. For track-like data, `TrackReport` + `TrackUpdateFactory.CreateSymbolUpdate(...)` does the TacticalAPI mapping for you:
+**1. Implement `ISimulationSource`.** For track-like data, `TrackReport` + `TrackUpdateFactory.CreateSymbolUpdate(...)` does the TacticalAPI mapping:
 
 ```csharp
 public sealed class AisShipSource(IHttpClientFactory http, IOptionsMonitor<AisOptions> options, TimeProvider time)
@@ -30,8 +32,7 @@ public sealed class AisShipSource(IHttpClientFactory http, IOptionsMonitor<AisOp
 }
 ```
 
-2. Register it with its options, in a `services.AddXyzSources(configuration)` extension method
-   (see `OpenSkyServiceCollectionExtensions.AddOpenSkySources` for the template — it's a few lines):
+**2. Register it with its options** in an `AddXyzSources` extension (template: `OpenSkyServiceCollectionExtensions.AddOpenSkySources`):
 
 ```csharp
 public static IServiceCollection AddAisSources(this IServiceCollection services, IConfiguration configuration)
@@ -43,11 +44,7 @@ public static IServiceCollection AddAisSources(this IServiceCollection services,
 }
 ```
 
-3. Give it its own adapter executable — a new `TacticalApi.Simulator.Adapter.Ais` project under
-   `src/adapter/` (plain `Microsoft.NET.Sdk`, `<OutputType>Exe</OutputType>`), referencing only `Core`
-   (`..\..\simulator\TacticalApi.Simulator.Core\...` - `Core` lives under `src/simulator/`, not
-   `src/adapter/`) and your new `Sources.Ais` project (a sibling under `src/adapter/`). Its entire
-   `Program.cs`:
+**3. Give it its own adapter executable** — `src/adapter/TacticalApi.Simulator.Adapter.Ais` (plain `Microsoft.NET.Sdk`, `<OutputType>Exe</OutputType>`), referencing only `Core` (`..\..\simulator\...` — Core lives under `src/simulator/`) and your `Sources.Ais` sibling. The whole `Program.cs`:
 
 ```csharp
 using TacticalApi.Simulator.Core;
@@ -56,24 +53,13 @@ using TacticalApi.Simulator.Sources.Ais;
 AdapterHost.Run(args, (services, configuration) => services.AddAisSources(configuration));
 ```
 
-Plus its own `appsettings.json` with `Adapter:Ingest:Address` (defaults to the Host's own endpoint)
-and `Adapter:Ais`, included both as `Content` (so it's copied next to the built executable) and as
-`<EmbeddedResource Include="appsettings.json"/>` (so `AppSettingsBootstrap` can regenerate it from that
-exact file if it's ever missing at runtime - see [Configuration](CONFIGURATION.md)). See
-[`Adapter.OpenSky`](../src/adapter/TacticalApi.Simulator.Adapter.OpenSky) for a working example of this exact
-shape, and add the new project to `TacticalApi.Simulator.slnx`.
+Plus its own `appsettings.json` with `Adapter:Ingest:Address` and `Adapter:Ais`, included **both** as `Content` (copied next to the executable) and as `<EmbeddedResource Include="appsettings.json"/>` (so `AppSettingsBootstrap` can regenerate that exact file — see [Configuration](CONFIGURATION.md)). Copy the shape from [`Adapter.OpenSky`](../src/adapter/TacticalApi.Simulator.Adapter.OpenSky), and add the project to `TacticalApi.Simulator.slnx`.
 
-Each source gets its own `SimulationSourceRunner` background service (so a slow or failing source
-never stalls others in the same adapter; exceptions are logged and retried next cycle) and, per the
-pattern above, its own adapter process entirely - it never touches the Host, which has no sources of
-its own (see [Architecture](ARCHITECTURE.md)).
+Each source gets its own `SimulationSourceRunner` background service — a slow or failing source never stalls another, exceptions are logged and retried next cycle — and its own adapter process. It never touches the Host, which has no sources.
 
 ## Adding a blue force or own-position source
 
-`BlueForceTracking` and `OwnPose` are separate services with their own write semantics, so they have their own
-source interfaces — `IBlueForceSource` (produces `UpdateBlueForce`s) and `IOwnPoseSource` (produces one
-`UpdatePosition`, or null to report nothing). Scheduling, enable/disable and failure handling are inherited from
-the same `SourceRunner<T>` as an `ISimulationSource`, so a source looks the same apart from what it returns:
+`IBlueForceSource` produces `UpdateBlueForce`s; `IOwnPoseSource` produces one `UpdatePosition` or null. Scheduling, enable/disable and failure handling come from the same `SourceRunner<T>`, so only the return type differs:
 
 ```csharp
 public sealed class MyTrackerSource(IOptionsMonitor<MyOptions> options, TimeProvider time) : IBlueForceSource
@@ -89,36 +75,21 @@ public sealed class MyTrackerSource(IOptionsMonitor<MyOptions> options, TimeProv
 }
 ```
 
-Register it with `services.AddBlueForceSource<MyTrackerSource>()` (or `AddOwnPoseSource<...>`), exactly as for a
-simulation source.
+Register with `services.AddBlueForceSource<MyTrackerSource>()` (or `AddOwnPoseSource<...>`), exactly as for a simulation source.
 
-One class may implement more than one of the three interfaces — `BlueForcePatrolSource` is both an
-`IBlueForceSource` and an `IOwnPoseSource`. Register it once per service; the source itself is registered with
-`TryAddSingleton`, so both runners drive **one shared instance** rather than two copies with diverging state.
-That matters more than it looks: two instances would each keep their own patrol clock, and the position the
-source reports over `OwnPose` would drift away from the same unit's blue force.
-
-The price of that shared instance is that **its mutable state is touched by two threads**. Each runner is its own
-`BackgroundService` on its own timer, so the two `Produce*Async` methods genuinely do run at once. Anything a
-dual-role source keeps between cycles — a counter, a state machine, and above all a `Random`, which returns
-garbage and can corrupt itself when used concurrently — has to be guarded. `BlueForcePatrolSource` keeps all of
-its behind one gate and computes everything else as a pure function of the options and the current time; do the
-same, or keep the source stateless.
-
-Two things a blue force source cannot do, both by contract rather than by omission:
-
-- **Delete.** There is no delete RPC. A blue force disappears only by stopping its keep-alives and waiting out
-  the implementation's timeout.
-- **Set `own_blue_force` or `associated_organization_unit_identity`.** `UpdateBlueForce` has no field for
-  either — they belong to the system answering, not to the report. On this Host, the first comes from
-  `Simulator:BlueForce:OwnIdentity` (see [Configuration](CONFIGURATION.md#simulatorblueforce)).
+| Rule | Why |
+| --- | --- |
+| A class may implement several of the three interfaces (`BlueForcePatrolSource` is blue force + own pose). Register once per service; `TryAddSingleton` keeps **one shared instance**. | Two instances would each keep their own patrol clock, and the position reported over `OwnPose` would drift away from the same unit's blue force. |
+| Guard every piece of mutable state a dual-role source keeps between cycles — counters, state machines, and above all `Random`. | Each runner is its own `BackgroundService` on its own timer, so both `Produce*Async` genuinely run at once; a shared `Random` returns garbage and can corrupt itself. `BlueForcePatrolSource` keeps all of its behind one gate and computes the rest as a pure function of options + time. Otherwise keep the source stateless. |
+| A blue force source cannot **delete**. | No delete RPC. It disappears by stopping keep-alives and waiting out the implementation's timeout. |
+| A blue force source cannot set `own_blue_force` / `associated_organization_unit_identity`. | `UpdateBlueForce` has no field for either — they belong to the answering system. Here: `Simulator:BlueForce:OwnIdentity` ([Configuration](CONFIGURATION.md#simulatorblueforce)). |
 
 ## Adding support for more situation object types
 
-Implement `ISituationObjectMerger` for the `UpdateSituationObject` oneof case (see `SymbolMerger` as the template — it's ~40 lines) and register it:
+Implement `ISituationObjectMerger` for the `UpdateSituationObject` oneof case (template: `SymbolMerger`, ~40 lines) and register it:
 
 ```csharp
 services.AddSingleton<ISituationObjectMerger, RouteMerger>();
 ```
 
-The store discovers mergers by their `HandledCase`; no other change needed.
+The store discovers mergers by their `HandledCase`; nothing else changes.

@@ -1,64 +1,99 @@
 # CI
 
-`.github/workflows/dotnet.yml` runs two jobs on every push/PR to `main`:
+`.github/workflows/dotnet.yml`, on every push/PR to `main`:
 
-- **`build-and-test`**: restore → format check → NuGet vulnerability scan → build (Release, warnings as errors, versioned from the run number + commit sha) → test with coverage → source SBOM + license check → publish each of the four executables (the Host and every `Adapter.*`) as a downloadable artifact.
-- **`docker-images`** (`needs: build-and-test`, for its version metadata only): a `strategy.matrix` over the five container executables, each with its own colocated Dockerfile (`src/simulator/TacticalApi.Simulator.Host/Dockerfile`, `src/adapter/TacticalApi.Simulator.Adapter.OpenSky/Dockerfile`, etc. - a project's container build lives with its own code, not as a shared build stage picked by `--target`), that per project builds a Docker image tagged with the computed version, scans it for CVEs, and generates an image-level SBOM - all five run in parallel. For the `host` matrix entry only (the sole one of the five with an HTTP surface - the adapters are plain outbound-push console apps), a smoke-test step runs the built image, polls `docker inspect`'s own `HEALTHCHECK` status until it reports `healthy` (or fails the job after 240s / on `unhealthy`), then confirms `/healthz` and `/metrics` answer from outside the container too - this runs on every build, PRs included, since it's a build-correctness check, not a publish step.
+```text
+ build-and-test ──► docker-images  (needs: it for version metadata only)
+ contract-drift-check   weekly schedule / workflow_dispatch only
+```
 
-That same entry then runs the **conformance suite** (`src/tools/TacticalApi.Simulator.Tool.Conformance`) against a second container started from the built image. Deliberately against the image rather than the source tree: that image is the artifact that ships, and the suite is this repository's own statement about what the TacticalAPI contract requires - so a change that quietly breaks a contract rule fails the build here instead of being discovered by whoever integrates against the published image. It runs over gRPC-Web (the transport the official Rheinmetall test client uses), which the plain-HTTP smoke test above does not exercise, and with `--include-slow` plus a shortened `Simulator__ExpirySweepInterval` so the expiry check doesn't have to wait the production default out. It also passes `--strict`, unlike the default: the suite's advisory severity exists so the tool doesn't call *somebody else's* implementation non-conformant over behaviour the contract leaves open, but this repo's own image is the reference - it should hold every reading the suite documents, including all eleven object types, so a regression there fails the build rather than printing `WARN`. The JUnit report it emits is uploaded as an artifact. This is the one step in `docker-images` that needs the .NET SDK, which is why that job's `Set up build environment` step is gated on `matrix.name == 'host'`. On a `push` to `main` (never on `pull_request` builds), a passing scan is then pushed to GHCR (`ghcr.io/<owner>/<image>`, both the versioned tag and `:latest`) using the run's own `GITHUB_TOKEN` - no extra secret to manage, but see the job's `permissions:` block, which has to restate `contents: read` alongside `packages: write` since setting `permissions` at all replaces the default grant rather than extending it.
+| Job | Steps |
+| --- | --- |
+| **`build-and-test`** | restore → format check → NuGet vulnerability scan → build (Release, warnings as errors, versioned from run number + sha) → test with coverage → source SBOM + license check → publish the Host and every `Adapter.*` as a downloadable artifact |
+| **`docker-images`** | a `strategy.matrix` over the five container executables, each with its own colocated Dockerfile — all five in parallel: build image tagged with the computed version, scan for CVEs, generate an image-level SBOM |
+| **`contract-drift-check`** | moves the `external/tacticalapi` submodule to upstream `main` and builds against it — early warning for upstream contract changes |
 
-`build-and-test` used to also be three parallel jobs (`format-check`, `build-and-test`, `sbom`), each with its own checkout/restore; they were merged into one to cut that down to a single restore instead of three — the trade-off is that a formatting typo fails after the whole pipeline runs (a few minutes) instead of in ~15 seconds, since steps within one job are always sequential. `docker-images` is deliberately its *own* job rather than more `build-and-test` steps: each `docker build` is self-contained - it does its own restore+build+publish from scratch, so it needs nothing `build-and-test` produced - and splitting it out lets the four images build/scan concurrently instead of one after another. Every one of the four Dockerfiles still works standalone for anyone who wants to build just that image without touching the rest of this pipeline: `docker build -f src/<project>/Dockerfile .`, run from the repo root (the build context has to be the repo root - each project needs `Directory.Build.props`/`Directory.Packages.props`/`global.json` and the whole `src/` tree for its project references, not just its own directory).
+A project's container build lives with its own code (`src/simulator/…Host/Dockerfile`, `src/adapter/…Adapter.OpenSky/Dockerfile`, …), not as a shared stage picked by `--target`. Each Dockerfile also works standalone: `docker build -f src/<project>/Dockerfile .` **from the repo root** — the context must be the root, since each project needs `Directory.Build.props`/`Directory.Packages.props`/`global.json` and the whole `src/` tree for its project references.
 
-A third job, `contract-drift-check`, only runs on the weekly schedule (or manual `workflow_dispatch`): it moves the `external/tacticalapi` submodule to upstream `main` and builds against it, as an early warning for upstream TacticalAPI contract changes.
+The SDK install + NuGet cache steps are a shared composite action (`.github/actions/setup-build-env`).
 
-The .NET SDK install + NuGet cache steps are factored into a shared composite action (`.github/actions/setup-build-env`).
+## The `host` matrix entry does two things the others don't
 
-## Formatting: three checks, one source of truth
+It is the only one of the five with an HTTP surface — the adapters are plain outbound-push console apps — which is also why that job's `Set up build environment` step is gated on `matrix.name == 'host'`.
 
-`.editorconfig` is the single source of truth for whitespace/charset conventions across every file in the repo, not just `*.cs` - but no single tool both understands every one of those file types *and* applies its formatting rules correctly, so `build-and-test` runs three separate formatting steps instead:
+| Extra step | Detail |
+| --- | --- |
+| **Smoke test** | Runs the built image, polls `docker inspect`'s own `HEALTHCHECK` until `healthy` (fails after 240s or on `unhealthy`), then confirms `/healthz` and `/metrics` answer from outside the container. On every build, PRs included — it's a build-correctness check, not a publish step. |
+| **Conformance suite** | Runs `Tool.Conformance` against a second container started from the built image. |
 
-1. **`dotnet format --verify-no-changes`** - C# style (`csharp_style_*` in `.editorconfig`) plus whitespace, syntax-aware.
-2. **`nixfmt --check`** over every `*.nix` file - syntax-aware Nix formatting. Pinned to the same nixfmt version (`v1.2.0`) that `.nix/shell.nix`'s nixpkgs input resolves today, verified against a hardcoded sha256, downloaded as [NixOS/nixfmt](https://github.com/NixOS/nixfmt)'s standalone static release binary rather than via Nix itself - this workflow otherwise needs no Nix install at all (see [docs/NIX.md](NIX.md)). Keep that pin and this one in sync if `nixpkgs` moves to a newer nixfmt.
-3. **[editorconfig-checker](https://editorconfig-checker.github.io/)** over every tracked file - charset, line endings, trailing whitespace, and final-newline, checked against whatever `.editorconfig` section matches each file. Downloaded the same way as nixfmt (pinned version `3.8.0` - the version `nix run .#editorconfig-check`'s locked nixpkgs input resolves today - sha256-verified release tarball, no Nix needed).
+Conformance runs against the **image, not the source tree**: that image is the artifact that ships, and the suite is this repo's own statement about what the contract requires — so a change that quietly breaks a rule fails here instead of surprising whoever integrates against the published image. It goes over gRPC-Web (the official test client's transport, which the plain-HTTP smoke test does not exercise), with `--include-slow` and a shortened `Simulator__ExpirySweepInterval`, and with `--strict`: advisory severity exists so the tool doesn't call *somebody else's* implementation non-conformant over behavior the contract leaves open, but this repo's image is the reference and should hold every reading the suite documents, all eleven object types included. The JUnit report is uploaded as an artifact.
 
-`nix run .#format` applies all three sets of fixes locally in one command (`dotnet format .`, then `nixfmt` on every `*.nix` file, then the same charset/EOL/trailing-whitespace/final-newline fixes on every other tracked text file - skipping binaries the same way `git grep -I` does). `nix run .#editorconfig-check` is its read-only counterpart (`nixfmt --check` + `editorconfig-checker`, mirroring steps 2-3 above; step 1 is still just `dotnet format --verify-no-changes`).
+On a `push` to `main` only (never on `pull_request`), a passing scan is pushed to GHCR (`ghcr.io/<owner>/<image>`, versioned tag + `:latest`) with the run's own `GITHUB_TOKEN`. Note the job's `permissions:` block restates `contents: read` alongside `packages: write` — setting `permissions` at all *replaces* the default grant rather than extending it.
 
-editorconfig-checker's own **Indentation and IndentSize checks are disabled** (`.editorconfig-checker.json`) repo-wide, on all three tools' checks combined coverage rather than relying on this one for the two languages that already have (1) and (2) above: that checker only verifies that each line's leading whitespace is a multiple of `indent_size` - it has no concept of a Markdown fenced code block's own embedded-language indentation (this repo's directory-tree diagrams in `docs/ARCHITECTURE.md` are one example) or a hanging/aligned continuation line in C# or a Dockerfile `LABEL ... \` continuation (both present in this repo too) - all three are valid, common formatting that isn't a multiple of any fixed `indent_size`. Enabling it produced dozens of false positives against exactly those three patterns when first tried; the two checks it can't get right for this repo's file mix are turned off, and indentation correctness for `.cs`/`.nix` is left to tools (1) and (2) that actually parse the language. `.editorconfig`'s `indent_size` declarations still stand for every file type - editors (VS Code, JetBrains, etc.) read them directly for auto-indent-on-newline regardless of whether this checker verifies them.
+## Why the jobs are split this way
 
-Adding a new file type: add (or adjust) its `.editorconfig` section first - that's what both editorconfig-checker and every editor read - then only add a fourth CI step if the new type needs its own syntax-aware formatter the way C# and Nix do.
+| Decision | Reason |
+| --- | --- |
+| `format-check` + `build-and-test` + `sbom` merged into one job | One restore instead of three. Trade-off: a formatting typo fails after the whole pipeline (minutes) instead of in ~15s, since steps in a job are sequential. |
+| `docker-images` kept separate | Each `docker build` is self-contained (its own restore+build+publish), so it needs nothing `build-and-test` produced — and splitting lets the images build and scan concurrently. |
 
-## Supply chain checks: SBOM, licenses, vulnerabilities
+## Formatting: five checks, one source of truth
 
-Within `build-and-test`:
+`.editorconfig` governs every file in the repo, not just `*.cs` — but no single tool both understands all those file types *and* applies their rules correctly, so there are five steps:
 
-1. **Vulnerable NuGet packages**: `dotnet list package --vulnerable --include-transitive`, failing the job if any project reports one. This is partly redundant with `NuGetAuditMode=all` in `Directory.Build.props` (set alongside this - restore-time NuGet Audit only checks *direct* PackageReferences by default, and `TreatWarningsAsErrors=true` already turns a detected vulnerability into a build failure) - the explicit step exists to give it a dedicated, readable report instead of a warning buried in build output.
-2. **Source SBOM**: generates a [CycloneDX](https://cyclonedx.org/) 1.7 JSON SBOM via the `CycloneDX` dotnet tool (`dotnet-CycloneDX <solution> --exclude-test-projects --exclude-dev --set-version ...`), scoped to the Host, every `Adapter.*`, and their `Sources.*` dependencies — what's actually in the four Docker images' application layers, not the whole solution's dev/test tooling. `--exclude-dev` drops any package flagged `developmentDependency` in its own nuspec (e.g. `SonarAnalyzer.CSharp`, a `PrivateAssets="all"` Roslyn analyzer referenced repo-wide in `Directory.Build.props` - build-time only, never published into an image); without it, the license allow-list step below fails on such a package's own license even though nothing ships it. Uploaded as a downloadable artifact (`sbom-<run>-<sha>`).
-3. **License allow-list**: a small inline Python script (same style as the coverage gate) reads the source SBOM's `components[].licenses` and fails the job if any component has no license metadata or a license outside the allow-list (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`). Extend the `ALLOWED` set in that step if a dependency with a different-but-acceptable license is intentionally added.
-4. **Docker image CVE scan** (in `docker-images`, once per matrix entry): after each image is built, the official Trivy image pulled straight from Docker Hub scans it against the local Docker socket (`docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image ...`), rather than the `aquasecurity/trivy-action` marketplace action - that action's bundled `setup-trivy` step needs `secrets.GITHUB_TOKEN` to fetch the Trivy binary from GitHub Releases, which this workflow otherwise doesn't need at all (see the caveats below). Covers both OS-level packages in the base image and .NET/NuGet dependencies (`--severity CRITICAL,HIGH --ignore-unfixed`); the vulnerability DB comes from a public `mirror.gcr.io` mirror, no auth either.
-5. **Docker image SBOM** (also per matrix entry): a second Trivy invocation (`--format cyclonedx`, no vuln scanning) generates an SBOM *of the built image itself* — this is what the source SBOM in step 2 can't see: the OS packages baked into the base layer (`mcr.microsoft.com/dotnet/aspnet` for the host, the smaller `mcr.microsoft.com/dotnet/runtime` for adapters - plain console apps, no ASP.NET Core needed), not just the .NET/NuGet dependency graph. Uploaded as `image-sbom-<name>-<run>-<sha>`. Written via stdout redirection (`> image-sbom.json`), not Trivy's own `--output <path>` writing through a `-v host:/container` bind mount — that mount is resolved by the Docker daemon, which under act's nested-container setup doesn't agree with the calling shell on what "the host path" even is, so the file silently never appeared (caught by testing, not assumed).
+| # | Check | Scope |
+| --- | --- | --- |
+| 1 | `dotnet format --verify-no-changes` | C# style (`csharp_style_*`) + whitespace, syntax-aware |
+| 2 | `nixfmt --check` | every `*.nix`, syntax-aware |
+| 3 | `dprint check` | every `*.json` — canonical formatting (`dprint.json`) |
+| 4 | `markdownlint-cli2` | every `*.md` — heading levels, fence languages, table and list structure (`.markdownlint-cli2.jsonc`) |
+| 5 | [editorconfig-checker](https://editorconfig-checker.github.io/) | every tracked file: charset, line endings, trailing whitespace, final newline |
 
-The `CycloneDX` install command is `dotnet tool install --global CycloneDX`, but the resulting command is `dotnet-CycloneDX`, not `cyclonedx` — verified directly (a first attempt using the shorter name failed with "command not found").
+(3) and (4) are the structural layer (5) cannot see: it checks whitespace, not whether a JSON file is canonically formatted or a markdown heading level skips a step.
+
+(2), (3) and (5) are downloaded as sha256-verified standalone release binaries rather than via Nix — this workflow otherwise needs no Nix install at all ([NIX.md](NIX.md)). Versions are pinned to whatever the locked `nixpkgs` input resolves today (nixfmt `v1.5.0`, dprint `0.57.4`, editorconfig-checker `4.0.2`); keep the pins in sync if `nixpkgs` moves.
+
+**(4) is the one exception to that pattern.** markdownlint-cli2 is Node-based with no standalone binary, so it installs from npm at an exact pinned version (`0.23.2`) instead — the runner image already has Node for the actions themselves. dprint's json *plugin* is the other gap: it is fetched from `plugins.dprint.dev` at run time, pinned by version in `dprint.json` but not sha256-verified.
+
+Markdown rule choices worth knowing (`.markdownlint-cli2.jsonc`): `MD013` (line length) is **off**, because these docs are deliberately table-heavy and a table row is one line however long its cells are; `MD024` is `siblings_only`, so each source README can have its own "Configuration" heading.
+
+```bash
+nix run .#format              # applies every fixable set locally
+nix run .#editorconfig-check  # read-only counterpart: (2)-(5); (1) is plain dotnet format
+```
+
+**editorconfig-checker's `Indentation`/`IndentSize` checks are disabled** repo-wide (`.editorconfig-checker.json`). It only verifies that leading whitespace is a multiple of `indent_size`, with no concept of a Markdown fenced block's embedded-language indentation (the directory trees in [ARCHITECTURE.md](ARCHITECTURE.md)), a hanging/aligned C# continuation, or a Dockerfile `LABEL ... \` continuation — all three present here, all valid, none a multiple of any fixed size. Enabling it produced dozens of false positives against exactly those patterns. Indentation for `.cs`/`.nix`/`.json`/`.md` is left to tools (1)-(4), which parse the language; `.editorconfig`'s `indent_size` still stands for editors' auto-indent regardless.
+
+Adding a new file type: adjust its `.editorconfig` section first — that is what the checker *and* every editor read — and add a sixth CI step only if it needs its own syntax-aware formatter the way C#, Nix, JSON and Markdown do. XML (`*.csproj`, `*.props`, `*.slnx`, `*.runsettings`) deliberately has none: those 19 files are already uniformly 2-space and no standalone XML formatter is worth a pinned binary for them.
+
+## Supply chain: SBOM, licenses, vulnerabilities
+
+| # | Check | Notes |
+| --- | --- | --- |
+| 1 | Vulnerable NuGet packages | `dotnet list package --vulnerable --include-transitive`, fails the job on any hit. Partly redundant with `NuGetAuditMode=all` + `TreatWarningsAsErrors` (restore-time audit covers only *direct* references by default); the explicit step exists for a readable report instead of a warning buried in build output. |
+| 2 | Source SBOM | [CycloneDX](https://cyclonedx.org/) 1.7 JSON via `dotnet-CycloneDX <solution> --exclude-test-projects --exclude-dev --set-version …`, scoped to the Host, every `Adapter.*` and their `Sources.*` — what is actually in the images' application layers. `--exclude-dev` drops packages flagged `developmentDependency` (e.g. `SonarAnalyzer.CSharp`, build-time only); without it the license step below fails on a package nothing ships. Uploaded as `sbom-<run>-<sha>`. |
+| 3 | License allow-list | Inline Python over the SBOM's `components[].licenses`; fails on missing metadata or a license outside `MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`. Extend `ALLOWED` in that step when adding an acceptable dependency with another license. |
+| 4 | Image CVE scan (per matrix entry) | Official Trivy image from Docker Hub against the local Docker socket, *not* the `aquasecurity/trivy-action` marketplace action — its bundled `setup-trivy` needs `secrets.GITHUB_TOKEN` to fetch the binary, which this workflow otherwise never needs. Covers base-image OS packages and .NET deps (`--severity CRITICAL,HIGH --ignore-unfixed`); DB from the public `mirror.gcr.io` mirror, no auth. |
+| 5 | Image SBOM (per matrix entry) | A second Trivy run (`--format cyclonedx`, no vuln scan) — this is what (2) cannot see: the OS packages baked into the base layer (`dotnet/aspnet` for the host, the smaller `dotnet/runtime` for adapters). Uploaded as `image-sbom-<name>-<run>-<sha>`. |
+
+Two findings worth not rediscovering:
+
+- Step 5 writes via **stdout redirection** (`> image-sbom.json`), not Trivy's `--output <path>` through a bind mount. That mount is resolved by the Docker daemon, which under act's nested-container setup disagrees with the calling shell about what "the host path" is, so the file silently never appeared.
+- The install command is `dotnet tool install --global CycloneDX`, but the resulting command is **`dotnet-CycloneDX`**, not `cyclonedx`.
 
 ## Running CI locally
 
-The whole workflow can run locally in Docker via [`act`](https://github.com/nektos/act) — no need to push a branch to see if CI passes.
-
-**Prerequisites:** Docker running on the host. `act` itself is already available inside the Nix dev shell (`.nix/shell.nix`); outside the shell, run it via `nix run .#ci-local`.
+Needs Docker running on the host. `act` is in the Nix dev shell; outside it, use the app.
 
 ```bash
-# Run everything act can run for a push event (build-and-test and
-# docker-images; contract-drift-check is skipped since it only triggers on
-# schedule/dispatch)
-nix run .#ci-local
-
-# Equivalent, if you're already inside the Nix dev shell
-act
+nix run .#ci-local   # everything act can run for a push event
+act                  # equivalent, inside the Nix dev shell
 ```
 
-The runner image is pinned in `.actrc` (`catthehacker/ubuntu:act-latest`) — act's default "micro" image lacks Node.js and a Docker CLI, which this workflow's composite action and `docker build` step both need. The Docker build step works because act's job containers get the host's Docker socket mounted automatically with this image, the same way GitHub-hosted runners have Docker preinstalled.
+`contract-drift-check` is skipped (schedule/dispatch only). The runner image is pinned in `.actrc` (`catthehacker/ubuntu:act-latest`) — act's default "micro" image lacks Node.js and a Docker CLI, which the composite action and `docker build` both need. With this image, job containers get the host's Docker socket mounted automatically, like a GitHub-hosted runner.
 
-Caveats:
-
-- `actions/cache` works, but the cache lives in act's own local storage, not GitHub's — it won't share hits with real CI runs.
-- Nothing in this workflow needs `secrets.GITHUB_TOKEN` or any other secret, so there's no credential setup required.
-- `actions/upload-artifact@v7` does **not** work under plain `act` — it needs `ACTIONS_RUNTIME_TOKEN`, which act only provides via `--artifact-server-path <dir>`, and even with that flag the upload still fails against act's bundled artifact server (a protocol mismatch with newer `upload-artifact` versions, confirmed by testing both ways). Every step *before* each upload still runs and reports correctly locally (confirmed by temporarily swapping the upload steps for a plain `ls` and running the affected job through - everything up to and including generating both SBOMs and scanning a Docker image passes); only the upload itself is act's limitation, not a workflow bug.
+| Caveat | |
+| --- | --- |
+| `actions/cache` | Works, but into act's own local storage — no hits shared with real CI. |
+| Secrets | None needed anywhere in this workflow. |
+| `actions/upload-artifact@v7` | Does **not** work under plain `act`: it needs `ACTIONS_RUNTIME_TOKEN`, which act supplies only via `--artifact-server-path <dir>`, and even then the upload fails against act's bundled artifact server (protocol mismatch with newer versions, confirmed both ways). Every step *before* each upload runs and reports correctly — verified by swapping the uploads for a plain `ls` and running the job through, SBOM generation and image scanning included. Act's limitation, not a workflow bug. |

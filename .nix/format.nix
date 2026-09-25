@@ -1,7 +1,7 @@
 { pkgs, dotnet-sdk }:
 {
   type = "app";
-  meta.description = "Applies formatting fixes across the whole repo: dotnet format for *.cs, nixfmt for *.nix, and charset/line-ending/trailing-whitespace/final-newline fixes for every other tracked file. Not --verify-no-changes; that's what CI's formatting steps and `nix run .#editorconfig-check` run instead, see docs/CI.md";
+  meta.description = "Applies formatting fixes across the whole repo: dotnet format for *.cs, nixfmt for *.nix, dprint for *.json, markdownlint-cli2 --fix for *.md, and charset/line-ending/trailing-whitespace/final-newline fixes for every other tracked file. Not --verify-no-changes; that's what CI's formatting steps and `nix run .#editorconfig-check` run instead, see docs/CI.md";
   program = "${pkgs.writeShellScriptBin "format-all" ''
     set -euo pipefail
 
@@ -16,6 +16,14 @@
     if [ -n "$nix_files" ]; then
       ${pkgs.nixfmt}/bin/nixfmt $nix_files
     fi
+
+    echo "Formatting *.json (dprint)..."
+    ${pkgs.dprint}/bin/dprint fmt
+
+    echo "Fixing *.md structure (markdownlint-cli2 --fix)..."
+    # --fix only rewrites the rules markdownlint can fix mechanically; anything
+    # left is reported by `nix run .#editorconfig-check` for a human to resolve.
+    ${pkgs.markdownlint-cli2}/bin/markdownlint-cli2 --fix || true
 
     echo "Fixing charset/line-endings/trailing-whitespace/final-newline on every other tracked text file..."
     # Same 4 checks .editorconfig-checker.json leaves enabled (Indentation/IndentSize

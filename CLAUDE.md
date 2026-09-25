@@ -1,68 +1,85 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC contract — all three services it declares: `Situation`, `BlueForceTracking`, `OwnPose`. The contract is the `external/tacticalapi` submodule; `Contracts.csproj` globs every `.proto` under it, so bumping the submodule is all it takes to get a new service's stubs.
 
-## What this is
+**The invariants below are rules, not background.** Each one has been broken before. Follow them; the linked doc says why.
 
-A simulator for the [Rheinmetall TacticalAPI](https://github.com/Rheinmetall/tacticalapi) gRPC interface - all three services it declares: `rheinmetall.tactical_api.v0.Situation`, `.BlueForceTracking` and `.OwnPose`. The contract itself is the `external/tacticalapi` submodule; `Contracts.csproj` globs every `.proto` under it, so bumping the submodule is all it takes to generate a new service's stubs. Full details, running instructions and endpoints: [README.md](README.md). Deeper docs live in `docs/`:
+## Where to read before changing something
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — design principles, solution layout, interface semantics implemented
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — `appsettings.json` reference per executable
-- [docs/EXTENDING.md](docs/EXTENDING.md) — adding a data source, adding a situation object type, adding a blue force or own-position source
-- [docs/TESTING.md](docs/TESTING.md) — unit/E2E test layers
-- [docs/CI.md](docs/CI.md) — pipeline stages, running the whole pipeline locally with `act`
+| Working on | Read first |
+| --- | --- |
+| Running Host + adapters, ports, map UI, grpcurl | [README.md](README.md#running) |
+| Structure, service semantics, non-contract features | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Anything in an `appsettings.json` or an `Options` class | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
+| New data source, new situation object type | [docs/EXTENDING.md](docs/EXTENDING.md) |
+| Tests | [docs/TESTING.md](docs/TESTING.md) |
+| CI, running the pipeline locally | [docs/CI.md](docs/CI.md) |
 
-Read the relevant doc above before making a structural change in that area — these are kept current and this file deliberately doesn't repeat their content.
+Those docs are kept current — link to them, don't copy them here.
 
 ## Commands
 
 ```bash
-# Build / test everything (there is no .sln, only the .slnx)
-dotnet build TacticalApi.Simulator.slnx
+dotnet build TacticalApi.Simulator.slnx                      # no .sln exists, only .slnx
 dotnet test tests/TacticalApi.Simulator.Tests/TacticalApi.Simulator.Tests.csproj
-
-# Single test (xunit filter, works with dotnet test too)
 dotnet test tests/TacticalApi.Simulator.Tests --filter "FullyQualifiedName~SyntheticScenarioSourceTests"
 
-# Check any TacticalAPI implementation against the contract, all three services (writes to it)
-# Note: blue force and position checks CANNOT clean up - neither service has a delete.
+dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"   # CI's coverage gate
+dotnet format --verify-no-changes --verbosity diagnostic                      # CI fails on this
+nix run .#editorconfig-check    # every other tracked file (nixfmt + dprint + markdownlint + editorconfig-checker)
+nix run .#ci-local              # the whole GitHub Actions workflow
+
+# Conformance check of any implementation, all three services. Writes to the target;
+# blue force + position checks CANNOT clean up (neither service has a delete RPC).
 dotnet run --project src/tools/TacticalApi.Simulator.Tool.Conformance -- --address http://localhost:5100 --include-slow
-
-# Same coverage gate as CI
-dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
-
-# Format check (CI fails the build on this, not just style-suggests)
-dotnet format --verify-no-changes --verbosity diagnostic
-
-# Format check for every other tracked file against .editorconfig (nixfmt + editorconfig-checker; see docs/CI.md)
-nix run .#editorconfig-check
-
-# Run the whole GitHub Actions workflow locally (see docs/CI.md for caveats)
-nix run .#ci-local
 ```
 
-Running the app itself (Host + adapters, ports, map UI, grpcurl examples) is documented in [README.md](README.md#running) — don't duplicate it here.
+## Topology
 
-## Architecture — the parts that span multiple files
+```text
+ Adapter.OpenSky   ┐
+ Adapter.Nws       │   gRPC client call                  Host  (the only process that binds a port)
+ Adapter.Synthetic ├──────────────────────────────────►  ├─ Situation ─────────► SituationStore
+ Adapter.Replay    ┘   Adapter:Ingest:Address            ├─ BlueForceTracking ─► BlueForceStore
+   one source per          (default: the Host;           ├─ OwnPose ───────────► OwnPoseStore
+   process, no ports        repoint it to drive any      │
+   of its own               other TacticalAPI impl)      └─ map UI · /metrics · /api/control · faults
+                                                            (plain HTTP — never on the gRPC surface)
 
-- **The proto model IS the model.** Generated `Rheinmetall.TacticalApi.V0` types are used directly in the store, event bus, and sources — there is no internal domain model to translate through.
-- **Host and adapters are separate executables, one store per service.** `TacticalApi.Simulator.Host` is only the stores + the three gRPC services of the contract + map UI — it has zero data sources. Each source runs in its own `TacticalApi.Simulator.Adapter.*` process and pushes updates into whichever endpoint `Adapter:Ingest:Address` points at, via a real gRPC client call (default: the Host). Repointing that one setting drives an adapter against any other TacticalAPI implementation instead, independently of the others — and it covers all three services, since the `BlueForceTracking`/`OwnPose` clients are built on the same channel (`IBlueForceIngest`, `IOwnPoseIngest` beside `ISituationIngest`).
-- **Adapter config has its own root, separate from the Host's.** Each `Adapter.*`'s own `appsettings.json` has the source's settings directly under `Adapter:<SourceName>` (e.g. `Adapter:ConvoyEscort`), not nested under a `Sources` key — that nesting existed only when the Host held every source's config in one shared file, before the Host/adapter split, and has since been removed. `Adapter` and the Host's own `Simulator` root are deliberately separate sections (an adapter isn't the simulator, it's a process that feeds one) - when adding or fixing a source's `Options` class, bind to `AdapterOptions.SectionName + ":<Name>"` (`TacticalApi.Simulator.Core.Configuration`), not `SimulatorOptions` or anything `Sources`-shaped. The Host's own `appsettings.json` has no source config at all.
-- **Options are `IOptionsMonitor`, hot-reloadable.** Bound with `ValidateDataAnnotations().ValidateOnStart()`, re-read every cycle — no restart needed to pick up an edited `appsettings.json`. If the file is missing at startup, `AppSettingsBootstrap` (Core) regenerates it from the executable's own embedded copy.
-- **Dependency direction:** `Host → Core → Contracts`, and separately `Adapter.* → Sources.* → Core → Contracts`. The Host never references any `Sources.*` project; no `Adapter.*` project references another.
-- **Adding a data source or a new situation object type**: follow [docs/EXTENDING.md](docs/EXTENDING.md) exactly — it has working code templates for each (`ISimulationSource` + adapter project shape; `IBlueForceSource`/`IOwnPoseSource` for the other two services; `ISituationObjectMerger` for a new oneof case). A class may implement several source interfaces (`BlueForcePatrolSource` is both a blue force and an own-pose source); register it once per service and `TryAddSingleton` keeps both runners on one instance, which is what stops its two reported positions drifting apart.
-- **Nothing that isn't in the contract goes on the gRPC surface — and everything that is in it does.** Fault injection (`Simulator:Faults`, `Host/Faults/`), the control endpoints (`Simulator:Control`, `Host/Control/`) and `/metrics` are all Host features on plain HTTP paths. Adding an RPC would let a client depend on something no real implementation offers. New capability of that kind belongs beside the existing ones, never as a new `rpc`. Conversely, when the upstream contract grows a service, the Host implements it: a stand-in answering one of three is one a client can only half-integrate against.
-- **Which service a scenario emits on follows one rule.** A friendly element that reports its own position is a blue force (`IBlueForceSource`); anything reported *about* - hostiles, graphics, orders, messages - is a situation object. That is why `ConvoyEscortSource` emits its gun trucks over `BlueForceTracking` but its route, ambush and SALUTE over `Situation`, and why `CombatOutpostDefenseSource` splits its observation posts from its perimeter graphic. Don't re-add a friendly vehicle as a `Symbol` "so it shows up too" - that puts it into a client's picture twice from two services that disagree about what it is.
-- **`BlueForceTracking` replaces, it does not merge.** `BlueForceStore` has no `ISituationObjectMerger` equivalent and no per-property `CreationMetaData`, because the contract says outright that "all fields must be filled in every call". An omitted field means the blue force no longer has one. Don't "fix" this to match `SituationStore`. Deletion is implicit only — there is no delete RPC, just `BlueForceTimeoutSweeper` and `Simulator:BlueForce:KeepAliveTimeout` — and `own_blue_force`/`associated_organization_unit_identity` have no field in `UpdateBlueForce`, so they come from the server (`Simulator:BlueForce:OwnIdentity`), never from the update.
-- **`OwnPose` stores per source, answers with one.** `OwnPoseStore` keeps every `source_identifier`'s latest fix; `GetPosition`/`SubscribePositionChangedEvents` return only the primary (`Simulator:OwnPose:PrimarySource`, default most-recent). A stale fix keeps its coordinates and gains `is_invalid_or_expired` rather than disappearing — that is the contract's own example, and `OwnPoseStalenessSweeper` exists so the flip reaches a subscriber who is not calling anything.
-- **The three streams share mechanics, not counters.** `EventBroker<T>` (Core/Events) owns the channel fan-out for all three; `SituationEventBroker`/`BlueForceEventBroker`/`PositionEventBroker` only supply which instruments drops and writes land on. Keep them separate: a blue force re-reports itself on a keep-alive cadence whether or not anything moved, and adding that to the situation counters would swamp them.
-- **A delete is a timestamped property, not a tombstone.** Every merger carries `is_deleted` through `PropertyMerge.Undelete`, which applies the same last-write-wins rule as every other property: an update newer than the delete revives the object. Don't revert this to preserving `is_deleted` unconditionally — that acknowledges later writes as successful while the object stays invisible forever, and silently loses any object the `ExpirySweeper` deleted that its source later reports again. `SituationStoreTests` covers both directions plus the expiry case.
-- **Two places are descriptor-driven, on purpose.** `SituationObjectToUpdate` (Core, turns a stored object back into the update that recreates it — the basis of stream-side recording) and `ReplayTimestamps` walk the protobuf descriptors instead of switching over the eleven object types, because the stored and update message families mirror each other field for field and a hand-written mapping would silently rot when the upstream contract grows a field. Don't "simplify" them into switches. `SituationObjectToUpdateTests` round-trips all eleven types through store → update → store and is what keeps them honest.
-- **Record/replay is `Situation` traffic only, and outside the store.** A frame is a batch of `UpdateSituationObject`/`DeleteSituationObject`; blue force keep-alives and position reports are deliberately not recorded, because replaying a keep-alive out of its original time base would assert a blue force is alive when the recording says only that it once was. `SituationStore` stays persistence-free; recording happens either as an `ISituationIngest` decorator in an adapter (`Adapter:Recording`, lossless) or as a subscriber (`Adapter:Recorder`, works against any implementation). Format: one JSON frame per line, objects in canonical protobuf JSON (`Core/Recording/RecordingFormat.cs`) — note `JsonFormatter.Default`, since any `WithIndentation(...)` switches the formatter to multi-line and breaks the one-frame-per-line invariant.
-- **Metrics filter by meter instance, not meter name.** `SimulatorMetrics` is a plain BCL `Meter` (no OpenTelemetry dependency); `MetricsCollector` and the test recorder both match on `ReferenceEquals(instrument.Meter, metrics.Meter)`. Several simulators share the E2E test process, and name-based filtering made each one's scrape include every other one's numbers.
+ Dependencies:  Host → Core → Contracts          Adapter.* → Sources.* → Core → Contracts
+ The Host references no Sources.* project and has zero data sources. No Adapter.* references another.
+```
+
+**Which service does a thing go on?**
+
+```text
+ friendly element reporting its own position ──► BlueForceTracking   IBlueForceSource
+ this platform's own fix ────────────────────► OwnPose              IOwnPoseSource
+ anything reported *about* — hostiles,
+ graphics, orders, messages ─────────────────► Situation            ISimulationSource
+```
+
+`ConvoyEscortSource` therefore emits gun trucks over `BlueForceTracking` but route/ambush/SALUTE over `Situation`; `CombatOutpostDefenseSource` splits OPs from its perimeter graphic. Never re-add a friendly vehicle as a `Symbol` "so it shows up too" — that is the same thing twice, from two services that disagree about what it is.
+
+## Invariants
+
+| Rule | Never |
+| --- | --- |
+| The generated `Rheinmetall.TacticalApi.V0` types are the model, in store, bus and sources. | Introduce an internal domain model to translate through. |
+| gRPC surface = the contract, exactly. Faults, control endpoints and `/metrics` are Host HTTP paths. | Add an `rpc`. When the upstream contract grows a *service*, the Host implements it. |
+| Source options bind to `AdapterOptions.SectionName + ":<Name>"` (`Core.Configuration`), e.g. `Adapter:ConvoyEscort`. | Bind under `SimulatorOptions` or anything `Sources`-shaped — that nesting is gone. |
+| Options are `IOptionsMonitor`, `ValidateDataAnnotations().ValidateOnStart()`, re-read every cycle. `AppSettingsBootstrap` regenerates a missing file from the embedded copy. | Require a restart to pick up an edited `appsettings.json`. |
+| A class may implement several source interfaces (`BlueForcePatrolSource`): register per service, `TryAddSingleton` keeps one instance. | Let it be constructed twice — its two reported positions then drift apart. |
+| `BlueForceTracking` **replaces** whole objects (contract: "all fields must be filled in every call"). Delete is implicit (`BlueForceTimeoutSweeper`, `Simulator:BlueForce:KeepAliveTimeout`); `own_blue_force` / `associated_organization_unit_identity` come from `Simulator:BlueForce:OwnIdentity`. | "Fix" it to merge like `SituationStore`, or take the own-identity fields from the update. |
+| `OwnPoseStore` keeps every `source_identifier`'s latest fix, answers with the primary (`Simulator:OwnPose:PrimarySource`). A stale fix keeps its coordinates and gains `is_invalid_or_expired` (`OwnPoseStalenessSweeper`). | Drop a stale fix — a subscriber who calls nothing would never learn. |
+| `is_deleted` is a timestamped property merged by `PropertyMerge.Undelete`: a newer update revives the object. `SituationStoreTests` covers both directions. | Preserve `is_deleted` unconditionally — writes get acked while the object stays invisible forever. |
+| `EventBroker<T>` (Core/Events) fans out for all three; `Situation`/`BlueForce`/`Position` brokers only pick instruments. | Merge their counters — keep-alive traffic would swamp the situation numbers. |
+| `SituationObjectToUpdate` and `ReplayTimestamps` walk protobuf descriptors on purpose; `SituationObjectToUpdateTests` round-trips all eleven types. | "Simplify" them into switches over the object types — they rot silently when the contract grows a field. |
+| Record/replay is `Situation` traffic only and lives outside the store: an `ISituationIngest` decorator (`Adapter:Recording`) or a subscriber (`Adapter:Recorder`). One JSON frame per line, `JsonFormatter.Default` (`Core/Recording/RecordingFormat.cs`). | Record keep-alives or positions; persist in `SituationStore`; use `WithIndentation(...)` — it breaks one-frame-per-line. |
+| Metrics filter by meter **instance**: `ReferenceEquals(instrument.Meter, metrics.Meter)`. | Filter by meter name — simulators share the E2E process and scrapes bleed into each other. |
 
 ## Conventions
 
-- File-scoped namespaces, `var` preferred when the type is apparent (`.editorconfig`, enforced as warnings/errors via `EnforceCodeStyleInBuild`).
-- `TreatWarningsAsErrors` is on repo-wide (`Directory.Build.props`) — a warning fails the build, not just CI's separate format-check step.
-- NuGet versions are centrally pinned in `Directory.Packages.props`; don't add per-project `Version=` attributes on `PackageReference`.
+- File-scoped namespaces; `var` when the type is apparent (`.editorconfig`, `EnforceCodeStyleInBuild`).
+- `TreatWarningsAsErrors` repo-wide (`Directory.Build.props`) — a warning fails the build.
+- NuGet versions pinned centrally in `Directory.Packages.props`; no per-project `Version=`.
