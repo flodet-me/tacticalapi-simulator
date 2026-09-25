@@ -201,12 +201,18 @@ public static class SituationObjects
         point.LongitudeCoordinate = 8.8 + index * 0.01;
     }
 
+    /// <summary>
+    ///     A UUID derived from the whole of <paramref name="value" />.
+    ///     It has to be the whole of it: a run's identities are seeded with its run id
+    ///     precisely so two runs against the same endpoint can't collide, and folding
+    ///     only the first sixteen bytes in threw the run id away - every run in the
+    ///     same year produced the same UUID, so the second run against a long-lived
+    ///     endpoint was really re-using the first run's already-deleted identity.
+    /// </summary>
     private static Guid Deterministic(string value)
     {
-        var bytes = new byte[16];
-        var source = System.Text.Encoding.UTF8.GetBytes(value);
-        for (var i = 0; i < bytes.Length; i++) bytes[i] = source[i % source.Length];
-        return new Guid(bytes);
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
+        return new Guid(hash.AsSpan(0, 16));
     }
 
     private static void Set(IMessage message, string fieldName, object value)

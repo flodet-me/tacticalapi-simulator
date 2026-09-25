@@ -7,6 +7,7 @@ pkgs.mkShell {
     pkgs.openssl
     pkgs.zlib
     pkgs.act # Run .github/workflows/dotnet.yml locally (needs Docker); see docs/CI.md
+    pkgs.gh # GitHub CLI - PRs, issues, workflow runs against this repo's remote
     pkgs.grpcurl # Poke the running host's reflection-enabled gRPC endpoint; see README.md
     pkgs.tshark # Inspect gRPC/gRPC-Web wire traffic (HTTP/2 h2c, HTTP/1.1) between adapters and Host
     pkgs.jq # Query JSON - API responses, appsettings.json, CycloneDX SBOM output

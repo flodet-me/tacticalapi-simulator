@@ -150,6 +150,15 @@ public static class SituationContractChecks
             CheckSeverity.Advisory, true, false, SubscribeAnnouncesDeletesAsync);
 
         // --- Tolerance -------------------------------------------------------------
+        yield return new ConformanceCheck("update-after-delete-revives",
+            "An update newer than the delete that hid an object brings it back",
+            "The contract does not settle what a delete does to a later update of the same identity. The "
+            + "reading applied here: is_deleted is a timestamped property like any other, so a newer update "
+            + "clears it. The alternative poisons an identity permanently - every later write is acknowledged "
+            + "while the object stays invisible - which also loses any track that expires on its own and is "
+            + "then reported again.",
+            CheckSeverity.Advisory, true, false, UpdateAfterDeleteRevivesAsync);
+
         yield return new ConformanceCheck("unknown-delete-tolerated",
             "Deleting an identity that doesn't exist is not an error",
             "Not stated by the contract: the simulator treats it as a no-op, on the grounds that a client "
@@ -813,6 +822,42 @@ public static class SituationContractChecks
     }
 
     // --- Tolerance ---------------------------------------------------------------------
+
+    private static async Task<CheckResult> UpdateAfterDeleteRevivesAsync(
+        ConformanceContext context, CancellationToken token)
+    {
+        var identity = context.NewIdentity("revive");
+        try
+        {
+            await context.AddOrUpdateAsync(token, context.SymbolUpdate(identity, ConformanceContext.Now(),
+                symbol => symbol.Name = new UpdatePropertyString { Content = "ALPHA" })).ConfigureAwait(false);
+            await context.DeleteAsync(token, identity).ConfigureAwait(false);
+
+            if (await context.FindAsync(identity, token).ConfigureAwait(false) is not null)
+                return CheckResult.Fail("the object was still in the snapshot after being deleted");
+
+            // The same identity, reported again well after the delete - a track that
+            // came back, or a source that resumed after its object had expired.
+            var header = await context.AddOrUpdateAsync(token, context.SymbolUpdate(identity,
+                ConformanceContext.Now(TimeSpan.FromMinutes(1)),
+                symbol => symbol.Name = new UpdatePropertyString { Content = "BRAVO" })).ConfigureAwait(false);
+            if (!header.Success) return CheckResult.Fail($"the re-report was rejected: {header.ErrorMessage}");
+
+            var stored = await context.FindAsync(identity, token).ConfigureAwait(false);
+            if (stored is null)
+                return CheckResult.Fail(
+                    "the re-report was acknowledged as successful but the object stayed invisible - this "
+                    + "identity can never be used again, and a track that expires and comes back is lost");
+
+            return stored.Symbol.Name?.Content == "BRAVO"
+                ? CheckResult.Pass()
+                : CheckResult.Fail($"the object came back with name '{stored.Symbol.Name?.Content}', expected 'BRAVO'");
+        }
+        finally
+        {
+            await context.TryCleanupAsync(identity).ConfigureAwait(false);
+        }
+    }
 
     private static async Task<CheckResult> UnknownDeleteToleratedAsync(
         ConformanceContext context, CancellationToken token)

@@ -15,6 +15,13 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 ///     is spawned and the engagement is resolved with <see cref="LanchesterModel" /> rather than a
 ///     coin flip, casualties are tracked per vehicle, and - if there are friendly casualties - a
 ///     CASEVAC <c>ActionTask</c> is raised alongside a SALUTE-format contact report.
+///     The serial itself is reported over <c>BlueForceTracking</c>, not as situation objects.
+///     That is what the convoy's vehicles are: friendly participants sending their own position on
+///     a keep-alive cadence. Everything the convoy reports <i>about</i> - the route it is driving,
+///     the ambush that hits it, the hostiles it sees, the CASEVAC it requests, the SALUTE it sends
+///     up - stays on the <c>Situation</c> service, which is the other half of the same distinction.
+///     Emitting the gun trucks on both would put the same vehicle into a client's picture twice
+///     from two services that disagree about what it is.
 ///     Friendly symbols use MIL-STD-2525C's "friend" affiliation (2nd SIDC character <c>F</c>);
 ///     the ambush element uses "hostile" (<c>H</c>) - same illustrative-code convention the base
 ///     synthetic scenario and the NWS source already use for symbology this contract doesn't cover
@@ -24,7 +31,7 @@ public sealed class ConvoyEscortSource(
     IOptionsMonitor<ConvoyEscortOptions> options,
     TimeProvider timeProvider,
     ILogger<ConvoyEscortSource> logger)
-    : ISimulationSource
+    : ISimulationSource, IBlueForceSource
 {
     private const string RouteName = "Route CONDOR";
     private const string ConvoyCallsign = "TRIREME";
@@ -32,6 +39,12 @@ public sealed class ConvoyEscortSource(
     private readonly Random _random = new(options.CurrentValue.Seed);
     private readonly RiskZone[] _riskZones = BuildRiskZones(options.CurrentValue);
     private readonly Dictionary<int, int> _casualtiesByVehicleIndex = new();
+
+    // Two runners drive this one instance - the situation picture and the blue force
+    // picture are separate services on separate schedules - so everything below is
+    // reachable from two threads. ProduceAsync advances the scenario; the blue force
+    // side only reads, so the leg can never be stepped twice in one cycle.
+    private readonly Lock _stateGate = new();
 
     private DateTimeOffset _legStartTime = timeProvider.GetUtcNow();
     private bool _headingToEnd = true;
@@ -58,35 +71,41 @@ public sealed class ConvoyEscortSource(
         var nowTs = Timestamp.FromDateTimeOffset(now);
         var reporter = new Identity { StringIdentity = o.ReporterId };
 
-        var fraction = AdvanceLeg(o, now);
-        var (from, to) = _headingToEnd
-            ? ((o.StartLatitude, o.StartLongitude), (o.EndLatitude, o.EndLongitude))
-            : ((o.EndLatitude, o.EndLongitude), (o.StartLatitude, o.StartLongitude));
-        var totalDistanceM = GeoMath.DistanceMeters(from.Item1, from.Item2, to.Item1, to.Item2);
+        List<UpdateSituationObject> updates;
+        UpdateActionEvent? raisedContact;
 
-        var vehicleCount = o.SecurityVehicleCount + o.CargoVehicleCount;
-        var spacingFraction = totalDistanceM > 0 ? 40.0 / totalDistanceM : 0;
-
-        var updates = new List<UpdateSituationObject>
+        lock (_stateGate)
         {
-            SupplyRoute(reporter, nowTs, o)
-        };
+            var fraction = AdvanceLeg(o, now);
+            var (from, to) = LegEndpoints(o);
+            var leadPosition = Lerp(from, to, Math.Clamp(fraction, 0, 1));
 
-        (double Lat, double Lon) leadPosition = default;
-        for (var i = 0; i < vehicleCount; i++)
-        {
-            var vehicleFraction = Math.Clamp(fraction - i * spacingFraction, 0, 1);
-            var position = Lerp(from, to, vehicleFraction);
-            if (i == 0) leadPosition = position;
-
-            var course = CourseBetween(from, to);
-            var casualties = _casualtiesByVehicleIndex.GetValueOrDefault(i);
-            var personnel = Math.Max(0, o.PersonnelPerVehicle - casualties);
-
-            updates.Add(ConvoyVehicle(o, i, vehicleCount, position, course, personnel));
+            updates = [SupplyRoute(reporter, nowTs, o)];
+            raisedContact = TryRaiseAmbush(o, reporter, now, nowTs, from, to, leadPosition, updates);
+            updates.Add(SaluteReport(reporter, nowTs, now));
         }
 
-        // --- Ambush probability check ---------------------------------------------------------
+        // Logged outside the gate: a logging provider is somebody else's code, and
+        // holding a lock across it is how an unrelated sink turns into a stall here.
+        if (raisedContact is not null)
+            logger.IncidentRaised(raisedContact.Identity.StringIdentity,
+                raisedContact.Name.Content, raisedContact.ThreatLevel.Content ?? 0);
+
+        logger.ScenarioCycleProduced(updates.Count);
+        return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
+    }
+
+    /// <summary>
+    ///     Rolls for an ambush and, if one triggers, appends the contact event, the
+    ///     hostile element and any CASEVAC request to <paramref name="updates" />.
+    ///     Returns the contact event for logging, or null if nothing happened.
+    ///     Callers hold <see cref="_stateGate" />.
+    /// </summary>
+    private UpdateActionEvent? TryRaiseAmbush(
+        ConvoyEscortOptions o, Identity reporter, DateTimeOffset now, Timestamp nowTs,
+        (double Lat, double Lon) from, (double Lat, double Lon) to, (double Lat, double Lon) leadPosition,
+        List<UpdateSituationObject> updates)
+    {
         var nearestZone = _riskZones
             .Select(z => (Zone: z, DistanceM: GeoMath.DistanceMeters(leadPosition.Lat, leadPosition.Lon, z.Lat, z.Lon)))
             .OrderBy(z => z.DistanceM)
@@ -96,28 +115,62 @@ public sealed class ConvoyEscortSource(
         var ambushProbability = inRiskZone ? o.BaseAmbushProbability * o.RiskZoneMultiplier : o.BaseAmbushProbability;
         var cooldownElapsed = _contactCooldownUntil is null || now >= _contactCooldownUntil;
 
-        if (cooldownElapsed && _random.NextDouble() < ambushProbability)
+        if (!cooldownElapsed || _random.NextDouble() >= ambushProbability) return null;
+
+        _contactCooldownUntil = now + o.ContactCooldown;
+        var contactPoint = inRiskZone ? (nearestZone.Zone!.Lat, nearestZone.Zone.Lon) : leadPosition;
+        var zoneName = nearestZone.Zone?.Name ?? "open route";
+        var (contactEvent, hostiles, saluteText) =
+            ResolveAmbush(o, reporter, now, nowTs, contactPoint, CourseBetween(from, to), zoneName);
+
+        updates.Add(contactEvent);
+        updates.AddRange(hostiles);
+        _latestSalute = saluteText;
+
+        var friendlyCasualtiesThisContact = _casualtiesByVehicleIndex.Values.Sum();
+        if (friendlyCasualtiesThisContact > 0) updates.Add(CasevacTask(reporter, now, nowTs, contactPoint));
+
+        return contactEvent.ActionEvent;
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<UpdateBlueForce>> ProduceBlueForcesAsync(CancellationToken cancellationToken)
+    {
+        var o = options.CurrentValue;
+        var now = timeProvider.GetUtcNow();
+        var nowTs = Timestamp.FromDateTimeOffset(now);
+        var vehicleCount = o.SecurityVehicleCount + o.CargoVehicleCount;
+
+        var updates = new List<UpdateBlueForce>(vehicleCount);
+        lock (_stateGate)
         {
-            _contactCooldownUntil = now + o.ContactCooldown;
-            var contactPoint = inRiskZone ? (nearestZone.Zone!.Lat, nearestZone.Zone.Lon) : leadPosition;
-            var zoneName = nearestZone.Zone?.Name ?? "open route";
-            var (contactEvent, hostiles, saluteText) =
-                ResolveAmbush(o, reporter, now, nowTs, contactPoint, CourseBetween(from, to), zoneName);
-            updates.Add(contactEvent);
-            updates.AddRange(hostiles);
-            _latestSalute = saluteText;
+            // Read-only: advancing the leg is ProduceAsync's job, so the position
+            // reported here is the serial's as of the last situation cycle. Half a
+            // cycle of lag is exactly what a real BFT feed looks like anyway.
+            var (from, to) = LegEndpoints(o);
+            var fraction = Math.Clamp((now - _legStartTime).TotalSeconds / o.TransitDuration.TotalSeconds, 0, 1);
+            var totalDistanceM = GeoMath.DistanceMeters(from.Lat, from.Lon, to.Lat, to.Lon);
+            var spacingFraction = totalDistanceM > 0 ? 40.0 / totalDistanceM : 0;
+            var course = CourseBetween(from, to);
 
-            var friendlyCasualtiesThisContact = _casualtiesByVehicleIndex.Values.Sum();
-            if (friendlyCasualtiesThisContact > 0) updates.Add(CasevacTask(reporter, now, nowTs, contactPoint));
-
-            logger.IncidentRaised(contactEvent.ActionEvent.Identity.StringIdentity,
-                contactEvent.ActionEvent.Name.Content, contactEvent.ActionEvent.ThreatLevel.Content ?? 0);
+            for (var i = 0; i < vehicleCount; i++)
+            {
+                var position = Lerp(from, to, Math.Clamp(fraction - i * spacingFraction, 0, 1));
+                var casualties = _casualtiesByVehicleIndex.GetValueOrDefault(i);
+                updates.Add(ConvoyBlueForce(o, i, vehicleCount, position, course, casualties, nowTs));
+            }
         }
 
-        updates.Add(SaluteReport(reporter, nowTs, now));
+        logger.ConvoyBlueForcesProduced(updates.Count);
+        return Task.FromResult<IReadOnlyList<UpdateBlueForce>>(updates);
+    }
 
-        logger.ScenarioCycleProduced(updates.Count);
-        return Task.FromResult<IReadOnlyList<UpdateSituationObject>>(updates);
+    /// <summary>Which way the serial is currently driving. Callers hold <see cref="_stateGate" />.</summary>
+    private ((double Lat, double Lon) From, (double Lat, double Lon) To) LegEndpoints(ConvoyEscortOptions o)
+    {
+        return _headingToEnd
+            ? ((o.StartLatitude, o.StartLongitude), (o.EndLatitude, o.EndLongitude))
+            : ((o.EndLatitude, o.EndLongitude), (o.StartLatitude, o.StartLongitude));
     }
 
     /// <summary>Advances the current leg's progress fraction [0,1]; flips direction and resets casualties on arrival.</summary>
@@ -207,9 +260,17 @@ public sealed class ConvoyEscortSource(
         };
     }
 
-    private static UpdateSituationObject ConvoyVehicle(
+    /// <summary>
+    ///     One vehicle of the serial, as the blue force it is. There is no free-text
+    ///     field on <c>BlueForce</c> to hang "3 personnel aboard" from, so the state
+    ///     that actually matters to a watcher - this truck has taken casualties, this
+    ///     one is combat ineffective - goes in the callsign, which is exactly what the
+    ///     contract says a callsign is for ("how the blue force should be represented
+    ///     textual"). The full casualty accounting still goes up in the SALUTE report.
+    /// </summary>
+    private static UpdateBlueForce ConvoyBlueForce(
         ConvoyEscortOptions o, int index, int vehicleCount,
-        (double Lat, double Lon) position, double course, int personnel)
+        (double Lat, double Lon) position, double course, int casualties, Timestamp nowTs)
     {
         var isLeadGunTruck = index == 0;
         var isRearGunTruck = index == vehicleCount - 1;
@@ -220,18 +281,48 @@ public sealed class ConvoyEscortSource(
             _ => $"LOGPAC {index}"
         };
 
+        var personnel = Math.Max(0, o.PersonnelPerVehicle - casualties);
+        var status = string.Empty;
+        if (personnel <= 0) status = " [COMBAT INEFFECTIVE]";
+        else if (casualties > 0) status = $" [{casualties} WIA]";
+
         // Illustrative MIL-STD-2525C codes, friend affiliation: combat instillation for the
         // armed escort, sustainment for the cargo trucks - same scheme as the base scenario's
         // patrol vehicle, just swapped function-id characters.
         var sidc = isLeadGunTruck || isRearGunTruck ? "SFGPUCI--------" : "SFGPUST--------";
 
-        var track = new TrackReport(
-            $"convoy:vehicle:{index}", $"{ConvoyCallsign} {role}", position.Lat, position.Lon,
-            null, course, 8.9, personnel <= 0 ? "Disabled - awaiting recovery" : $"{personnel} personnel aboard");
+        return new UpdateBlueForce
+        {
+            Identity = new Identity { StringIdentity = $"convoy:vehicle:{index}" },
 
-        return TrackUpdateFactory.CreateSymbolUpdate(track, o.ReporterId, sidc, SymbolCatalog.Mil2525C,
-            DateTimeOffset.UtcNow, TimeSpan.FromMinutes(2));
+            // The call is the keep-alive; this is the timestamp the timeout runs off.
+            LastContactTime = nowTs,
+            Callsign = $"{ConvoyCallsign} {role}{status}",
+            Symbol = new SymbolIdentifier { SymbolCatalog = SymbolCatalog.Mil2525C, StringIdentifier = sidc },
+            BlueForceType = new BlueForceType { IsVehicle = true, IsLeader = isLeadGunTruck },
+            PointLocation = new Point
+            {
+                LocationTime = nowTs,
+                GeoPoint = new GeoPoint
+                {
+                    LatitudeCoordinate = position.Lat,
+                    LongitudeCoordinate = position.Lon,
+                    MeasurementCode = MeasurementCode.Gps
+                },
+                Course = course,
+
+                // A disabled truck is stopped, which is half of what says it is in trouble.
+                Speed = personnel <= 0 ? 0 : 8.9
+            }
+        };
     }
+
+    /// <summary>
+    ///     Identity of the blue force a Host's <c>Simulator:BlueForce:OwnIdentity</c>
+    ///     should point at for this scenario to show an own force - the lead gun truck,
+    ///     where the convoy commander rides.
+    /// </summary>
+    public static string OwnBlueForceIdentity => "convoy:vehicle:0";
 
     /// <summary>
     ///     Spawns the ambush element and resolves the engagement, returning the ActionEvent, the

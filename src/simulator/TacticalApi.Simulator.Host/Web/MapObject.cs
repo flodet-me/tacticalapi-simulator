@@ -63,3 +63,25 @@ public sealed record MapObject(
     MapLocation? Location,
     IReadOnlyDictionary<string, string> Details,
     MapSymbolIdentifier? SymbolIdentifier);
+
+/// <summary>
+///     A blue force flattened to just what the read-only map GUI needs to render it.
+///     Kept apart from <see cref="MapObject" /> because the two are not the same
+///     kind of thing: a blue force has no free-text location geometry, no expiry and
+///     no per-property metadata, and does have a callsign, a mount host and the
+///     own-force flag that decide how the GUI draws it.
+/// </summary>
+public sealed record MapBlueForce(
+    string Id,
+    string? Callsign,
+    MapPoint? Location,
+    double? Course,
+    double? Speed,
+    bool Own,
+    bool IsVehicle,
+    bool IsUnmanned,
+    bool IsLeader,
+    string? MountHost,
+    string? OrganizationUnit,
+    string? LastContactTime,
+    MapSymbolIdentifier? SymbolIdentifier);

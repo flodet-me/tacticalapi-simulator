@@ -5,7 +5,8 @@ namespace TacticalApi.Simulator.Host.Logging;
 /// <summary>
 ///     Source-generated log messages for the gRPC service layer.
 ///     EventId ranges 2000-2099 SituationGrpcService, 2100-2199 fault injection,
-///     2200-2299 control endpoints (see also Core: 1XXX, Sources.*: 3XXX). Each class
+///     2200-2299 control endpoints, 2300-2399 BlueForceTrackingGrpcService,
+///     2400-2499 OwnPoseGrpcService (see also Core: 1XXX, Sources.*: 3XXX). Each class
 ///     gets a block of 100, messages spaced by 10 to leave room for later additions.
 /// </summary>
 internal static partial class Log
@@ -73,4 +74,56 @@ internal static partial class Log
     [LoggerMessage(EventId = 2240, EventName = "ObjectsInjected", Level = LogLevel.Information,
         Message = "Control: injected {Count} situation object(s)")]
     public static partial void ObjectsInjected(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 2250, EventName = "BlueForcesReset", Level = LogLevel.Information,
+        Message = "Control: reset dropped {Count} blue force(s) and {Sources} position source(s)")]
+    public static partial void BlueForcesReset(this ILogger logger, int count, int sources);
+
+    // --- BlueForceTrackingGrpcService (2300-2399) --------------------------------------
+
+    [LoggerMessage(EventId = 2310, EventName = "BlueForceSubscriberConnected", Level = LogLevel.Information,
+        Message = "Blue force subscriber {Peer} connected")]
+    public static partial void BlueForceSubscriberConnected(this ILogger logger, string peer);
+
+    [LoggerMessage(EventId = 2320, EventName = "BlueForceSubscriberDisconnected", Level = LogLevel.Information,
+        Message = "Blue force subscriber {Peer} disconnected")]
+    public static partial void BlueForceSubscriberDisconnected(this ILogger logger, string peer);
+
+    [LoggerMessage(EventId = 2330, EventName = "BlueForceBatchSent", Level = LogLevel.Trace,
+        Message = "Sent batch of {Count} blue force(s) to {Peer}")]
+    public static partial void BlueForceBatchSent(this ILogger logger, string peer, int count);
+
+    [LoggerMessage(EventId = 2340, EventName = "GetBlueForcesServed", Level = LogLevel.Trace,
+        Message = "Served snapshot of {Count} blue force(s)")]
+    public static partial void GetBlueForcesServed(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 2350, EventName = "AddOrUpdateBlueForcesReceived", Level = LogLevel.Trace,
+        Message = "AddOrUpdateBlueForces received {Count} blue force(s)")]
+    public static partial void AddOrUpdateBlueForcesReceived(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 2360, EventName = "AddOrUpdateBlueForcesFailed", Level = LogLevel.Warning,
+        Message = "AddOrUpdateBlueForces failed: {Error}")]
+    public static partial void AddOrUpdateBlueForcesFailed(this ILogger logger, string? error);
+
+    // --- OwnPoseGrpcService (2400-2499) ------------------------------------------------
+
+    [LoggerMessage(EventId = 2410, EventName = "PositionSubscriberConnected", Level = LogLevel.Information,
+        Message = "Position subscriber {Peer} connected")]
+    public static partial void PositionSubscriberConnected(this ILogger logger, string peer);
+
+    [LoggerMessage(EventId = 2420, EventName = "PositionSubscriberDisconnected", Level = LogLevel.Information,
+        Message = "Position subscriber {Peer} disconnected")]
+    public static partial void PositionSubscriberDisconnected(this ILogger logger, string peer);
+
+    [LoggerMessage(EventId = 2430, EventName = "GetPositionServed", Level = LogLevel.Trace,
+        Message = "Served own position from source '{Source}'")]
+    public static partial void GetPositionServed(this ILogger logger, string source);
+
+    [LoggerMessage(EventId = 2440, EventName = "UpdatePositionReceived", Level = LogLevel.Trace,
+        Message = "UpdatePosition received a fix from source '{Source}'")]
+    public static partial void UpdatePositionReceived(this ILogger logger, string source);
+
+    [LoggerMessage(EventId = 2450, EventName = "UpdatePositionFailed", Level = LogLevel.Warning,
+        Message = "UpdatePosition failed: {Error}")]
+    public static partial void UpdatePositionFailed(this ILogger logger, string? error);
 }

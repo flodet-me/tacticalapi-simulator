@@ -1,4 +1,5 @@
 using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Rheinmetall.TacticalApi.V0;
 
 namespace TacticalApi.Simulator.Tool.Conformance;
@@ -12,7 +13,7 @@ namespace TacticalApi.Simulator.Tool.Conformance;
 ///     up after themselves; the prefix is a safety net, not the plan.
 /// </summary>
 public sealed class ConformanceContext(
-    Situation.SituationClient client, string reporterId, string runId, TimeSpan? streamTimeout = null)
+    ChannelBase channel, string reporterId, string runId, TimeSpan? streamTimeout = null)
 {
     /// <summary>
     ///     How long a streaming check waits for the object it expects before calling
@@ -31,8 +32,21 @@ public sealed class ConformanceContext(
     /// </summary>
     public TimeSpan ProbeTimeout => TimeSpan.FromMilliseconds(Math.Max(500, StreamTimeout.TotalMilliseconds / 5));
 
-    /// <summary>The client under test.</summary>
-    public Situation.SituationClient Client { get; } = client;
+    /// <summary>The <c>Situation</c> client under test.</summary>
+    public Situation.SituationClient Client { get; } = new(channel);
+
+    /// <summary>The <c>BlueForceTracking</c> client under test.</summary>
+    public BlueForceTracking.BlueForceTrackingClient BlueForceClient { get; } = new(channel);
+
+    /// <summary>The <c>OwnPose</c> client under test.</summary>
+    public OwnPose.OwnPoseClient OwnPoseClient { get; } = new(channel);
+
+    /// <summary>
+    ///     Position source identifier this run reports as, so a run cannot be
+    ///     confused with the implementation's own sensors - and so two runs against
+    ///     the same endpoint don't fight over one source.
+    /// </summary>
+    public string PositionSource { get; } = $"conformance-{runId}";
 
     /// <summary>Reporter identity this run stamps on everything it writes.</summary>
     public Identity Reporter { get; } = new() { StringIdentity = reporterId };
@@ -117,6 +131,74 @@ public sealed class ConformanceContext(
     {
         var snapshot = await GetAllAsync(cancellationToken).ConfigureAwait(false);
         return snapshot.FirstOrDefault(obj => identity.Equals(SituationObjects.IdentityOf(obj)));
+    }
+
+    /// <summary>Builds a minimal blue force update; further fields are set by the caller.</summary>
+    public UpdateBlueForce BlueForceUpdate(
+        Identity identity, Timestamp lastContactTime, Action<UpdateBlueForce>? configure = null)
+    {
+        var update = new UpdateBlueForce
+        {
+            Identity = identity,
+            LastContactTime = lastContactTime
+        };
+        configure?.Invoke(update);
+        return update;
+    }
+
+    /// <summary>Sends one or more blue force updates and returns the response header.</summary>
+    public async Task<ResponseHeader> AddOrUpdateBlueForcesAsync(
+        CancellationToken cancellationToken, params UpdateBlueForce[] updates)
+    {
+        var request = new AddOrUpdateBlueForcesRequest();
+        request.BlueForcesToUpdates.AddRange(updates);
+        var response = await BlueForceClient
+            .AddOrUpdateBlueForcesAsync(request, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return response.Header;
+    }
+
+    /// <summary>Fetches every blue force the implementation currently has.</summary>
+    public async Task<IReadOnlyList<BlueForce>> GetBlueForcesAsync(CancellationToken cancellationToken)
+    {
+        var response = await BlueForceClient
+            .GetBlueForcesAsync(new GetBlueForcesRequest(), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return response.BlueForces;
+    }
+
+    /// <summary>Finds one blue force by identity, or null if it isn't there.</summary>
+    public async Task<BlueForce?> FindBlueForceAsync(Identity identity, CancellationToken cancellationToken)
+    {
+        var all = await GetBlueForcesAsync(cancellationToken).ConfigureAwait(false);
+        return all.FirstOrDefault(blueForce => identity.Equals(blueForce.Identity));
+    }
+
+    /// <summary>Reports a position for this run's own source and returns the response header.</summary>
+    public async Task<ResponseHeader> UpdatePositionAsync(
+        CancellationToken cancellationToken, double latitude, double longitude)
+    {
+        var response = await OwnPoseClient.UpdatePositionAsync(new UpdatePositionRequest
+        {
+            Position = new UpdatePosition
+            {
+                SourceIdentifier = PositionSource,
+                PointLocation = new Point
+                {
+                    LocationTime = Now(),
+                    GeoPoint = new GeoPoint { LatitudeCoordinate = latitude, LongitudeCoordinate = longitude }
+                }
+            }
+        }, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return response.Header;
+    }
+
+    /// <summary>Fetches the position the implementation currently treats as primary.</summary>
+    public async Task<GetPositionResponse> GetPositionAsync(CancellationToken cancellationToken)
+    {
+        return await OwnPoseClient
+            .GetPositionAsync(new GetPositionRequest(), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

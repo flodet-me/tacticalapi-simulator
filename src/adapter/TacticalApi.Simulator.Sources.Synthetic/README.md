@@ -1,12 +1,20 @@
 # TacticalApi.Simulator.Sources.Synthetic
 
-Seven fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
+Eight fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
 picture, a scripted mini scenario that exercises every situation object type in the TacticalAPI contract, two
 scenarios modeling real military operations end to end — a convoy escort and a combat outpost defense — with
-friendly/hostile forces and engagements resolved probabilistically rather than scripted, a load generator that
-makes no attempt at plausibility and simply moves as many objects as you ask for, a geometry showcase that
-holds one static object of every location kind for checking a client's rendering, and a theater-scale demo
-picture of NATO's eastern flank meant to be shown to someone rather than tested against.
+friendly/hostile forces and engagements resolved probabilistically rather than scripted, a blue force patrol that
+feeds the contract's other two services (`BlueForceTracking` and `OwnPose`), a load generator that makes no
+attempt at plausibility and simply moves as many objects as you ask for, a geometry showcase that holds one
+static object of every location kind for checking a client's rendering, and a theater-scale demo picture of
+NATO's eastern flank meant to be shown to someone rather than tested against.
+
+**Which service a thing goes on** is decided the same way in every scenario here, and it is worth stating once:
+a friendly element that reports its own position is a **blue force**; anything reported *about* — an enemy
+contact, a graphic someone drew, an order, a message — is a **situation object**. So the convoy's gun trucks and
+the combat outpost's observation posts go over `BlueForceTracking`, while their routes, perimeters, ambushes,
+hostiles, tasks and reports stay on `Situation`. Emitting a friendly vehicle on both would put it into a client's
+picture twice, from two services that disagree about what it is.
 
 `GeoMath.cs` (destination-point projection, haversine distance, point-in-polygon containment) and
 `LanchesterModel.cs` (Lanchester's Square Law attrition) are shared by every scenario below that needs real-world
@@ -115,6 +123,20 @@ every `TransitDuration` — replacement personnel are assumed between runs, so c
 4. Every cycle also refreshes a persistent `NatoMessageDocument` carrying the latest contact as a SALUTE-format report
    (Size/Activity/Location/Unit/Time/Equipment) — a real US military spot-report format.
 
+### What goes where
+
+| Over `BlueForceTracking` | Over `Situation` |
+| --- | --- |
+| `convoy:vehicle:{i}` — every gun truck and cargo truck, spaced along the route, `is_vehicle` (the lead gun truck also `is_leader`) | `convoy:route:condor` (the supply route with its risk-zone waypoints) |
+| | The ambush `ActionEvent`, the hostile symbols it spawns |
+| | The CASEVAC `ActionTask`, the SALUTE `NatoMessageDocument` |
+
+`BlueForce` has no free-text field, so a vehicle's state rides in its callsign —
+`TRIREME LOGPAC 2 [2 WIA]`, or `[COMBAT INEFFECTIVE]` once it has no one left aboard, in which case it also
+reports a speed of zero. The full casualty accounting still goes up in the SALUTE report. Point
+`Simulator:BlueForce:OwnIdentity` at `convoy:vehicle:0` (the lead gun truck, where the convoy commander rides)
+to see an own force.
+
 ### Configuration (`ConvoyEscortOptions`)
 
 | Setting                              | Default        | Notes                                                  |
@@ -169,6 +191,15 @@ Given a contact (subject to `ContactCooldown`), one of three real outcomes is ro
 
 A persistent `NatoMessageDocument` SITREP (posture + latest contact) refreshes every cycle.
 
+### What goes where
+
+| Over `BlueForceTracking` | Over `Situation` |
+| --- | --- |
+| `cop:bf:cp` — the command post, `is_leader`, with the garrison's effective strength in its callsign | `cop:perimeter` (the defended perimeter polygon — a graphic the commander drew, not a force) |
+| `cop:bf:op:{i}` — every manned observation post | `cop:task:defend` and `cop:task:qrf`, the hostile elements, the SITREP |
+
+Point `Simulator:BlueForce:OwnIdentity` at `cop:bf:cp` to see an own force.
+
 ### Configuration (`CombatOutpostDefenseOptions`)
 
 | Setting                                | Default   | Notes                                                        |
@@ -190,6 +221,78 @@ A persistent `NatoMessageDocument` SITREP (posture + latest contact) refreshes e
 | `ContactCooldown`                        | `00:08:00`| minimum time between contacts, range 30s–4h                      |
 | `Seed`                                   | `4077`    | deterministic perimeter/OP layout and contact rolls              |
 | `ReporterId`                             | `SIM-COP` |                                                                  |
+
+## `BlueForcePatrolSource`
+
+Config section: `Adapter:BlueForcePatrol`, bound to `BlueForcePatrolOptions`. **Enabled by default** — it is the
+only source that puts anything behind `BlueForceTracking` and `OwnPose`, so running the Host plus this adapter
+should show all three services of the contract alive without further configuration.
+
+The convoy and combat outpost scenarios feed `BlueForceTracking` too (see above). This one is still the source
+to reach for when the blue force contract itself is what you are testing: it is the only one that exercises
+`mount_host`, an unmanned blue force, and `OwnPose` — including a position source that drops out.
+
+This one is a blue force source, not a simulation source, and that distinction is the point. A blue force is not a
+situation object with a friendly affiliation: it is a friendly participant updating its *own* position on a
+keep-alive cadence, and the contract gives it its own service, its own message and its own implicit deletion rule.
+Emitting these as `Symbol`s as well would put the same vehicle into a client's picture twice, from two services
+that disagree about what it is — so the scenarios above own the situation picture and this one owns the blue force
+picture.
+
+### How it works
+
+A section ("BADGER") patrols a loop around `CenterLatitude`/`CenterLongitude`:
+
+- **A carrier vehicle** (`is_vehicle`) driving the loop, one lap per `LapDuration`.
+- **A section leader** (`is_leader`) and `DismountCount` riflemen.
+- **A small UAS** (`is_unmanned`) — stowed on the carrier while the section is mounted, orbiting ahead of it at
+  altitude once they are on the ground.
+
+Every cycle is a keep-alive for all of them. Three things exist here to be tested against rather than to look
+pretty:
+
+- **`mount_host`.** The section alternates mounted (`MountedPhaseDuration`) and dismounted
+  (`DismountedPhaseDuration`). While mounted every rifleman reports the carrier as its host and rides its
+  position; dismounted they fan out over `DismountSpreadM` with no host at all. That appearing and disappearing
+  relationship is what a client's map has to collapse, and it is easy to get wrong when it never changes.
+- **Combined type flags.** `BlueForceType` allows several to be true at once, and all three kinds are present
+  simultaneously — so an implementation that treats the flags as an enum is caught.
+- **GNSS dropout.** With probability `GnssOutageProbability` per cycle the leader's handheld goes silent for
+  `GnssOutageDuration` and the source reports *no* position at all. That is deliberate: it leaves the server's own
+  staleness handling to show the client the fix going `is_invalid_or_expired` while keeping its coordinates —
+  exactly the case the contract describes, "because the user entered a building".
+
+This source is registered against two runners (`AddBlueForceSource` + `AddOwnPoseSource`) sharing one instance, so
+that the position it reports over `OwnPose` is the same soldier's as the leader's blue force rather than a second
+patrol clock drifting alongside the first. The two runners tick independently, so everything this class keeps
+between cycles — the GNSS state machine and its `Random` — sits behind one gate; everything else is a pure
+function of the options and the current time.
+
+The leader (`blueforce:patrol:leader`) is the natural own force. `own_blue_force` has no field in
+`UpdateBlueForce` — which blue force is "me" belongs to the system answering, not to the report — so point the
+Host's `Simulator:BlueForce:OwnIdentity` at that identity to see it flagged (and ringed on the map GUI).
+
+Symbol codes are illustrative MIL-STD-2525C with friend affiliation, the same convention the convoy and NWS
+sources use for symbology the contract doesn't cover natively.
+
+### Configuration (`BlueForcePatrolOptions`)
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `Enabled` | `true` | Whether the source runs. |
+| `UpdateInterval` | `00:00:05` | Keep-alive cadence. The contract's "at least every 30s" is the ceiling, not the target — this leaves the section alive across several lost calls. |
+| `CenterLatitude` / `CenterLongitude` | `53.08` / `8.8` | Center of the patrol area. |
+| `PatrolRadiusM` | `1200` | Radius of the carrier's loop. |
+| `LapDuration` | `00:12:00` | Time for one full lap. |
+| `DismountCount` | `3` | Riflemen, not counting the leader. |
+| `MountedPhaseDuration` | `00:03:00` | How long the section stays aboard the carrier. |
+| `DismountedPhaseDuration` | `00:03:00` | How long it stays on the ground before remounting. |
+| `DismountSpreadM` | `120` | How far the dismounts spread from the carrier. |
+| `PositionSourceIdentifier` | `GNSS` | `source_identifier` the leader's fixes are reported under. |
+| `GnssOutageProbability` | `0.05` | Chance per cycle that the GNSS drops out. |
+| `GnssOutageDuration` | `00:00:45` | How long an outage lasts. |
+| `Seed` | `7` | Deterministic seed for the outage rolls. |
+| `Callsign` | `BADGER` | Callsign prefix for every member of the section. |
 
 ## `LoadGeneratorSource`
 

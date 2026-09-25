@@ -41,6 +41,103 @@ public sealed class ControlEndpointsE2ETests
     }
 
     [Fact]
+    public async Task Reset_AlsoDropsBlueForcesAndPositionSources()
+    {
+        // A reset returns the whole simulator to its just-started state. A situation
+        // emptied while blue forces kept reporting from the previous run would be a
+        // state no restart produces, and therefore not worth being able to reach.
+        await using var factory = new SimulatorFactory();
+        var blueForces = factory.CreateBlueForceClient();
+        var ownPose = factory.CreateOwnPoseClient();
+        var http = factory.CreateClient();
+
+        await blueForces.AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates = { E2E.BlueForce(Unique("reset-bf"), T0, "ALPHA") }
+        });
+        await ownPose.UpdatePositionAsync(E2E.Position("GNSS", 48.1, 11.5));
+
+        // Act
+        var response = await http.PostAsync(new Uri("/api/control/reset", UriKind.Relative), null);
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+        var dropped = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, dropped.GetProperty("droppedBlueForces").GetInt32());
+        Assert.Equal(1, dropped.GetProperty("droppedPositionSources").GetInt32());
+        Assert.Empty((await blueForces.GetBlueForcesAsync(new GetBlueForcesRequest())).BlueForces);
+        Assert.Null((await ownPose.GetPositionAsync(new GetPositionRequest())).Position);
+    }
+
+    [Fact]
+    public async Task State_ReportsEveryServiceOfTheContract()
+    {
+        // Arrange
+        await using var factory = new SimulatorFactory();
+        var http = factory.CreateClient();
+
+        await factory.CreateBlueForceClient().AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates = { E2E.BlueForce(Unique("state-bf"), T0, "ALPHA") }
+        });
+        await factory.CreateOwnPoseClient().UpdatePositionAsync(E2E.Position("GNSS", 48.137, 11.575));
+
+        // Act
+        var state = await http.GetFromJsonAsync<JsonElement>("/api/control/state");
+
+        // Assert
+        Assert.Equal(1, state.GetProperty("blueForces").GetInt32());
+        Assert.Equal(1, state.GetProperty("positionSources").GetInt32());
+        var position = state.GetProperty("primaryPosition");
+        Assert.Equal("GNSS", position.GetProperty("source").GetString());
+        Assert.Equal(48.137, position.GetProperty("lat").GetDouble());
+        Assert.False(position.GetProperty("invalidOrExpired").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BlueForcesAndPosition_CanBeInjectedByHand()
+    {
+        // Same shortcut as /api/control/objects, one endpoint per service: a blue
+        // force is not a situation object, and putting both through one endpoint
+        // would invent a shape the contract doesn't have.
+        await using var factory = new SimulatorFactory();
+        var http = factory.CreateClient();
+
+        var blueForce = await http.PostAsync(new Uri("/api/control/blueforces", UriKind.Relative), Json("""
+            {
+              "blueForcesToUpdates": [
+                {
+                  "identity": { "stringIdentity": "hand:bf" },
+                  "lastContactTime": "2026-09-24T12:00:00Z",
+                  "callsign": "HAND"
+                }
+              ]
+            }
+            """));
+
+        var position = await http.PostAsync(new Uri("/api/control/position", UriKind.Relative), Json("""
+            {
+              "position": {
+                "sourceIdentifier": "HAND",
+                "pointLocation": {
+                  "geoPoint": { "latitudeCoordinate": 48.1, "longitudeCoordinate": 11.5 }
+                }
+              }
+            }
+            """));
+
+        // Assert
+        blueForce.EnsureSuccessStatusCode();
+        position.EnsureSuccessStatusCode();
+
+        var stored = await factory.CreateBlueForceClient().GetBlueForcesAsync(new GetBlueForcesRequest());
+        Assert.Equal("HAND", Assert.Single(stored.BlueForces).Callsign);
+
+        var fix = await factory.CreateOwnPoseClient().GetPositionAsync(new GetPositionRequest());
+        Assert.Equal("HAND", fix.Position.SourceIdentifier);
+    }
+
+    [Fact]
     public async Task Pause_FreezesWritesArrivingOverGrpcToo()
     {
         // Arrange - the pause is enforced in the store, so it must apply to the

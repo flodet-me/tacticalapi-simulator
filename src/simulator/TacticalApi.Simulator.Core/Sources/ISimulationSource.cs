@@ -15,17 +15,8 @@ namespace TacticalApi.Simulator.Core.Sources;
 ///     3. Bind its options from configuration (IOptionsMonitor recommended so
 ///     interval/parameters are tunable at runtime).
 /// </summary>
-public interface ISimulationSource
+public interface ISimulationSource : ISimulationSourceSchedule
 {
-    /// <summary>Stable name used for logging and diagnostics.</summary>
-    public string Name { get; }
-
-    /// <summary>Whether the source should currently run (can react to live config).</summary>
-    public bool Enabled { get; }
-
-    /// <summary>Delay between production cycles; re-read every cycle.</summary>
-    public TimeSpan Interval { get; }
-
     /// <summary>
     ///     Produces the next batch of updates. Returning an empty batch is fine.
     ///     Exceptions are logged and the source is retried next cycle.

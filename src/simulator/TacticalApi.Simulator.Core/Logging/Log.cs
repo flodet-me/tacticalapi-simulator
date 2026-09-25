@@ -7,7 +7,9 @@ namespace TacticalApi.Simulator.Core.Logging;
 ///     event here gives each one a stable EventId/EventName pair for filtering, and lets
 ///     the compiler check message templates against their arguments at build time.
 ///     EventId ranges (see also Host: 2XXX, Sources.*: 3XXX):
-///     1000-1099 SimulationSourceRunner, 1100-1199 SituationStore, 1200-1299 ExpirySweeper.
+///     1000-1099 SimulationSourceRunner, 1100-1199 SituationStore, 1200-1299 ExpirySweeper,
+///     1300-1399 recording/replay, 1400-1499 BlueForceStore + its sweeper,
+///     1500-1599 OwnPoseStore + its sweeper.
 ///     Each class gets a block of 100, each message a multiple of 10 within it, leaving
 ///     room to insert new events later without renumbering existing ones.
 /// </summary>
@@ -113,4 +115,64 @@ internal static partial class Log
     [LoggerMessage(EventId = 1350, EventName = "RecordingClosed", Level = LogLevel.Information,
         Message = "Recording '{Path}' closed after {Frames} frame(s)")]
     public static partial void RecordingClosed(this ILogger logger, string path, long frames);
+
+    // --- BlueForceStore / BlueForceTimeoutSweeper (1400-1499) --------------------------
+
+    [LoggerMessage(EventId = 1410, EventName = "BlueForceIgnoredStale", Level = LogLevel.Debug,
+        Message = "Ignoring stale blue force update for {Key}")]
+    public static partial void BlueForceIgnoredStale(this ILogger logger, string key);
+
+    [LoggerMessage(EventId = 1420, EventName = "BlueForceLimitReached", Level = LogLevel.Warning,
+        Message = "Blue force limit of {MaxBlueForces} reached; rejecting new blue force {Key}")]
+    public static partial void BlueForceLimitReached(this ILogger logger, int maxBlueForces, string key);
+
+    [LoggerMessage(EventId = 1430, EventName = "BlueForceMissingContactTime", Level = LogLevel.Warning,
+        Message = "Rejected blue force update for {Key}: missing required last_contact_time")]
+    public static partial void BlueForceMissingContactTime(this ILogger logger, string key);
+
+    [LoggerMessage(EventId = 1440, EventName = "BlueForceBatchProcessed", Level = LogLevel.Trace,
+        Message = "AddOrUpdateBlueForces processed {Total} update(s): {Applied} applied, {Stale} stale/ignored")]
+    public static partial void BlueForceBatchProcessed(this ILogger logger, int total, int applied, int stale);
+
+    [LoggerMessage(EventId = 1450, EventName = "BlueForceWriteRejectedWhilePaused", Level = LogLevel.Debug,
+        Message = "Rejected a blue force batch of {Count} update(s): the simulator is paused")]
+    public static partial void BlueForceWriteRejectedWhilePaused(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1460, EventName = "BlueForcesTimedOut", Level = LogLevel.Information,
+        Message = "Implicitly deleted {Count} blue force(s) after their keep-alive timeout elapsed")]
+    public static partial void BlueForcesTimedOut(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1470, EventName = "BlueForceStoreCleared", Level = LogLevel.Information,
+        Message = "Blue force reset: dropped {Count} blue force(s)")]
+    public static partial void BlueForceStoreCleared(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1480, EventName = "BlueForceSweepFailed", Level = LogLevel.Error,
+        Message = "Blue force timeout sweep failed; retrying next interval")]
+    public static partial void BlueForceSweepFailed(this ILogger logger, Exception exception);
+
+    // --- OwnPoseStore / OwnPoseStalenessSweeper (1500-1599) ---------------------------
+
+    [LoggerMessage(EventId = 1510, EventName = "PositionUpdated", Level = LogLevel.Trace,
+        Message = "Position source '{Source}' reported a new fix")]
+    public static partial void PositionUpdated(this ILogger logger, string source);
+
+    [LoggerMessage(EventId = 1520, EventName = "PositionMissingSource", Level = LogLevel.Warning,
+        Message = "Rejected position update: missing required source_identifier")]
+    public static partial void PositionMissingSource(this ILogger logger);
+
+    [LoggerMessage(EventId = 1530, EventName = "PositionRejectedWhilePaused", Level = LogLevel.Debug,
+        Message = "Rejected a position update: the simulator is paused")]
+    public static partial void PositionRejectedWhilePaused(this ILogger logger);
+
+    [LoggerMessage(EventId = 1540, EventName = "PositionExpired", Level = LogLevel.Information,
+        Message = "Primary position from '{Source}' changed validity and was announced")]
+    public static partial void PositionExpired(this ILogger logger, string source);
+
+    [LoggerMessage(EventId = 1550, EventName = "OwnPoseCleared", Level = LogLevel.Information,
+        Message = "Own pose reset: dropped {Count} position source(s)")]
+    public static partial void OwnPoseCleared(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1560, EventName = "OwnPoseSweepFailed", Level = LogLevel.Error,
+        Message = "Own pose staleness sweep failed; retrying next interval")]
+    public static partial void OwnPoseSweepFailed(this ILogger logger, Exception exception);
 }

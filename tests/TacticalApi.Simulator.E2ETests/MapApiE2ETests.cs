@@ -179,4 +179,83 @@ public sealed class MapApiE2ETests
     {
         return $"{prefix}-{Guid.NewGuid():N}";
     }
+
+    [Fact]
+    public async Task BlueForces_AreServedOnTheirOwnLayerRatherThanMixedIntoTheObjects()
+    {
+        // The GUI draws them differently - callsign, mount tie-line, own-force ring -
+        // and a viewer has to be able to tell which service a track came from, so
+        // they are a separate endpoint rather than extra entries in /api/objects.
+        await using var factory = new SimulatorFactory();
+        var http = factory.CreateClient();
+        var carrier = Unique("bf-carrier");
+
+        await factory.CreateBlueForceClient().AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates =
+            {
+                E2E.BlueForce(carrier, T0, "CARRIER", 53.0, 8.8, type: new BlueForceType { IsVehicle = true }),
+                E2E.BlueForce(Unique("bf-rider"), T0, "RIDER", 53.0, 8.8,
+                    mountHost: new Identity { StringIdentity = carrier })
+            }
+        });
+
+        // Act
+        var blueForces = await http.GetFromJsonAsync<JsonElement>("/api/blueforces");
+        var objects = await http.GetFromJsonAsync<JsonElement>("/api/objects");
+
+        // Assert
+        Assert.Equal(2, blueForces.GetArrayLength());
+        Assert.Equal(0, objects.GetArrayLength());
+
+        var rider = blueForces.EnumerateArray().Single(bf => bf.GetProperty("callsign").GetString() == "RIDER");
+        Assert.Equal(IdentityKey.TryCreate(new Identity { StringIdentity = carrier }),
+            rider.GetProperty("mountHost").GetString());
+        Assert.Equal(53.0, rider.GetProperty("location").GetProperty("lat").GetDouble());
+        Assert.False(rider.GetProperty("own").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BlueForces_SurfaceTheSymbolIdentifierTheFrontendRenders()
+    {
+        // Same renderer as the situation layer, so the same joined-SIDC rule applies.
+        await using var factory = new SimulatorFactory();
+        var http = factory.CreateClient();
+
+        await factory.CreateBlueForceClient().AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates =
+            {
+                E2E.BlueForce(Unique("bf-sidc"), T0, "ALPHA", 53.0, 8.8)
+            }
+        });
+
+        await factory.CreateBlueForceClient().AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates =
+            {
+                Symbolised(Unique("bf-sidc-2"), new SymbolIdentifier
+                {
+                    StringIdentifier = "SFGPUCI--------",
+                    SymbolCatalog = SymbolCatalog.Mil2525C
+                })
+            }
+        });
+
+        var blueForces = await http.GetFromJsonAsync<JsonElement>("/api/blueforces");
+
+        var symbolised = blueForces.EnumerateArray()
+            .Single(bf => bf.TryGetProperty("symbolIdentifier", out var s) && s.ValueKind != JsonValueKind.Null);
+        Assert.Equal("SFGPUCI--------",
+            symbolised.GetProperty("symbolIdentifier").GetProperty("sidc").GetString());
+        Assert.Equal("Mil2525C",
+            symbolised.GetProperty("symbolIdentifier").GetProperty("catalog").GetString());
+    }
+
+    private static UpdateBlueForce Symbolised(string id, SymbolIdentifier symbol)
+    {
+        var update = E2E.BlueForce(id, T0, "SYMBOLISED", 53.1, 8.9);
+        update.Symbol = symbol;
+        return update;
+    }
 }

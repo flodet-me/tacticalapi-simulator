@@ -4,10 +4,11 @@ namespace TacticalApi.Simulator.Sources.Synthetic.Logging;
 
 /// <summary>
 ///     Source-generated log messages for the offline synthetic simulation sources.
-///     EventId range 3300-3699 - simulation sources share the 3XXX block (see also
-///     Core: 1XXX, Host: 2XXX): 3300-3399 SyntheticAirTrackSource, 3400-3499
-///     SyntheticScenarioSource, 3500-3599 GeometryShowcaseSource, 3600-3699
-///     EasternFlankSource.
+///     EventId range 3300-3799 - simulation sources share the 3XXX block (see also
+///     Core: 1XXX, Host: 2XXX): 3300-3399 SyntheticAirTrackSource (with the load
+///     generator at 3350-3399), 3400-3499 SyntheticScenarioSource, 3500-3599
+///     GeometryShowcaseSource, 3600-3699 EasternFlankSource, 3700-3799
+///     BlueForcePatrolSource.
 /// </summary>
 internal static partial class Log
 {
@@ -36,6 +37,14 @@ internal static partial class Log
         Message = "Synthetic scenario patrol task status changed to {Status}")]
     public static partial void PatrolTaskStatusChanged(this ILogger logger, string status);
 
+    [LoggerMessage(EventId = 3450, EventName = "ConvoyBlueForcesProduced", Level = LogLevel.Trace,
+        Message = "Convoy escort cycle produced {Count} blue force keep-alive(s)")]
+    public static partial void ConvoyBlueForcesProduced(this ILogger logger, int count);
+
+    [LoggerMessage(EventId = 3460, EventName = "CopBlueForcesProduced", Level = LogLevel.Trace,
+        Message = "Combat outpost cycle produced {Count} blue force keep-alive(s)")]
+    public static partial void CopBlueForcesProduced(this ILogger logger, int count);
+
     // --- LoadGeneratorSource (3350-3399) -----------------------------------------------
 
     [LoggerMessage(EventId = 3350, EventName = "LoadObjectsProduced", Level = LogLevel.Trace,
@@ -53,4 +62,18 @@ internal static partial class Log
     [LoggerMessage(EventId = 3600, EventName = "EasternFlankProduced", Level = LogLevel.Trace,
         Message = "Eastern flank produced {Count} update(s), cycle at {CyclePercent}%")]
     public static partial void EasternFlankProduced(this ILogger logger, int count, int cyclePercent);
+
+    // --- BlueForcePatrolSource (3700-3799) ---------------------------------------------
+
+    [LoggerMessage(EventId = 3710, EventName = "BlueForcesProduced", Level = LogLevel.Trace,
+        Message = "Blue force patrol cycle produced {Count} keep-alive(s); section mounted: {Mounted}")]
+    public static partial void BlueForcesProduced(this ILogger logger, int count, bool mounted);
+
+    [LoggerMessage(EventId = 3720, EventName = "GnssOutageStarted", Level = LogLevel.Debug,
+        Message = "Blue force patrol leader's GNSS dropped out for {Seconds:F0}s; reporting no position")]
+    public static partial void GnssOutageStarted(this ILogger logger, double seconds);
+
+    [LoggerMessage(EventId = 3730, EventName = "GnssRestored", Level = LogLevel.Debug,
+        Message = "Blue force patrol leader's GNSS recovered; resuming position reports")]
+    public static partial void GnssRestored(this ILogger logger);
 }

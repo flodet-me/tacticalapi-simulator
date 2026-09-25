@@ -27,6 +27,41 @@ public sealed class MetricsEndpointE2ETests
         Assert.Contains("tacticalapi_updates_applied_total 0", body, StringComparison.Ordinal);
         Assert.Contains("tacticalapi_subscriber_events_dropped_total 0", body, StringComparison.Ordinal);
         Assert.Contains("tacticalapi_situation_objects 0", body, StringComparison.Ordinal);
+
+        // The other two services of the contract, counted on their own instruments -
+        // a blue force re-reporting itself every few seconds would otherwise swamp
+        // the situation numbers and make both useless.
+        Assert.Contains("tacticalapi_blue_forces_updated_total 0", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_blue_forces_expired_total 0", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_blue_forces 0", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_positions_updated_total 0", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Metrics_CountBlueForcesAndPositionsSeparatelyFromSituationTraffic()
+    {
+        // Arrange
+        await using var factory = new SimulatorFactory();
+        var http = factory.CreateClient();
+
+        await factory.CreateBlueForceClient().AddOrUpdateBlueForcesAsync(new AddOrUpdateBlueForcesRequest
+        {
+            BlueForcesToUpdates =
+            {
+                E2E.BlueForce("metrics:bf:1", T0, "ALPHA"),
+                E2E.BlueForce("metrics:bf:2", T0, "BRAVO")
+            }
+        });
+        await factory.CreateOwnPoseClient().UpdatePositionAsync(E2E.Position("GNSS", 48.1, 11.5));
+
+        // Act
+        var body = await http.GetStringAsync(new Uri("/metrics", UriKind.Relative));
+
+        // Assert - and the situation counters are untouched by any of it.
+        Assert.Contains("tacticalapi_blue_forces_updated_total 2", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_blue_forces 2", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_positions_updated_total 1", body, StringComparison.Ordinal);
+        Assert.Contains("tacticalapi_updates_applied_total 0", body, StringComparison.Ordinal);
     }
 
     [Fact]
