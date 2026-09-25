@@ -4,9 +4,10 @@ namespace TacticalApi.Simulator.Sources.Synthetic.Logging;
 
 /// <summary>
 ///     Source-generated log messages for the offline synthetic simulation sources.
-///     EventId range 3300-3499 - simulation sources share the 3XXX block (see also
+///     EventId range 3300-3699 - simulation sources share the 3XXX block (see also
 ///     Core: 1XXX, Host: 2XXX): 3300-3399 SyntheticAirTrackSource, 3400-3499
-///     SyntheticScenarioSource.
+///     SyntheticScenarioSource, 3500-3599 GeometryShowcaseSource, 3600-3699
+///     EasternFlankSource.
 /// </summary>
 internal static partial class Log
 {
@@ -40,4 +41,16 @@ internal static partial class Log
     [LoggerMessage(EventId = 3350, EventName = "LoadObjectsProduced", Level = LogLevel.Trace,
         Message = "Load generator produced {Count} object update(s)")]
     public static partial void LoadObjectsProduced(this ILogger logger, int count);
+
+    // --- GeometryShowcaseSource (3500-3599) --------------------------------------------
+
+    [LoggerMessage(EventId = 3500, EventName = "ShowcaseShapesProduced", Level = LogLevel.Trace,
+        Message = "Geometry showcase produced {Count} shape update(s)")]
+    public static partial void ShowcaseShapesProduced(this ILogger logger, int count);
+
+    // --- EasternFlankSource (3600-3699) ------------------------------------------------
+
+    [LoggerMessage(EventId = 3600, EventName = "EasternFlankProduced", Level = LogLevel.Trace,
+        Message = "Eastern flank produced {Count} update(s), cycle at {CyclePercent}%")]
+    public static partial void EasternFlankProduced(this ILogger logger, int count, int cyclePercent);
 }

@@ -47,7 +47,7 @@ public sealed class RouteMerger : ISituationObjectMerger
         return new SituationObject
         {
             Route = route,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

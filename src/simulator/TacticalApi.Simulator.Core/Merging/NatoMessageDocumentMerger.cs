@@ -45,7 +45,7 @@ public sealed class NatoMessageDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             NatoMessageDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

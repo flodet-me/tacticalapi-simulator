@@ -49,7 +49,7 @@ public sealed class PictureDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             PictureDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

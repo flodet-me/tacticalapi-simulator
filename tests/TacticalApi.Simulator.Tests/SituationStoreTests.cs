@@ -171,6 +171,45 @@ public sealed class SituationStoreTests
     }
 
     [Fact]
+    public void AddOrUpdate_AfterDelete_BringsTheObjectBack()
+    {
+        // Arrange: an identity that has been deleted, as an expiry sweep or an operator would.
+        var store = TestHelpers.CreateStore();
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0, "GONE")]);
+        store.Delete([TestHelpers.Delete("track-1", T0.AddSeconds(1))]);
+        Assert.Empty(store.GetSnapshot());
+
+        // Act: the source reports it again, later - a replacement in the same slot, or a track
+        // re-acquired after being dropped.
+        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(2), "BACK")]);
+
+        // Assert: a delete is a soft delete of an object, not a tombstone on its identity. Without
+        // this the write is accepted and even announced on the stream, and the object stays
+        // invisible in every snapshot for the rest of the process's life.
+        Assert.True(result.Success);
+        var revived = Assert.Single(store.GetSnapshot());
+        Assert.Equal("track-1", revived.Symbol.Identity.StringIdentity);
+        Assert.Equal("BACK", revived.Symbol.Name.Content);
+        Assert.False(revived.IsDeleted.Content);
+    }
+
+    [Fact]
+    public void AddOrUpdate_NotNewerThanTheDelete_LeavesTheObjectDeleted()
+    {
+        // Arrange
+        var store = TestHelpers.CreateStore();
+        store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0)]);
+        store.Delete([TestHelpers.Delete("track-1", T0.AddSeconds(5))]);
+
+        // Act: a report from before the delete - a slow reporter catching up, not news.
+        var result = store.AddOrUpdate([TestHelpers.SymbolUpdate("track-1", T0.AddSeconds(3), "LATE")]);
+
+        // Assert: same last-write-wins rule as every other property, so it stays deleted.
+        Assert.True(result.Success);
+        Assert.Empty(store.GetSnapshot());
+    }
+
+    [Fact]
     public void SweepExpired_DeletesExpiredObjects()
     {
         // Arrange

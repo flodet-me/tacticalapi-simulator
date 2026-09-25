@@ -44,7 +44,7 @@ public sealed class SketchDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             SketchDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

@@ -1,10 +1,12 @@
 # TacticalApi.Simulator.Sources.Synthetic
 
-Five fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
+Seven fully offline sources — no network, no external dependency — for demos and load tests: a circular air-track
 picture, a scripted mini scenario that exercises every situation object type in the TacticalAPI contract, two
 scenarios modeling real military operations end to end — a convoy escort and a combat outpost defense — with
-friendly/hostile forces and engagements resolved probabilistically rather than scripted, and a load generator that
-makes no attempt at plausibility and simply moves as many objects as you ask for.
+friendly/hostile forces and engagements resolved probabilistically rather than scripted, a load generator that
+makes no attempt at plausibility and simply moves as many objects as you ask for, a geometry showcase that
+holds one static object of every location kind for checking a client's rendering, and a theater-scale demo
+picture of NATO's eastern flank meant to be shown to someone rather than tested against.
 
 `GeoMath.cs` (destination-point projection, haversine distance, point-in-polygon containment) and
 `LanchesterModel.cs` (Lanchester's Square Law attrition) are shared by every scenario below that needs real-world
@@ -242,3 +244,161 @@ curl -s http://localhost:4268/metrics | grep subscriber_events
 
 Covered by `LoadGeneratorSourceTests` (windowing and wrap-around, movement between cycles, determinism, clean
 ingest into the store).
+
+## `GeometryShowcaseSource`
+
+Config section: `Adapter:GeometryShowcase`, bound to `GeometryShowcaseOptions`. **Disabled by default** — it is a
+test pattern, not demo content, so switch it on while checking a client's rendering. It is seven static objects,
+so it costs nothing to run beside `SyntheticScenario`, but they carry no expiry: switched off again, they stay in
+the Host until it restarts.
+
+Exists for one question the scenario sources answer badly: *does my client draw every location kind correctly?*
+They do emit polygons, ellipses and sketches, but buried in a moving picture and partly behind random incidents.
+Here every shape is at a fixed offset around the configured center, derived only from the options — no RNG, no
+motion — so two runs produce the same picture and a client's rendering can be compared against it directly.
+
+### What it emits
+
+| Identity                  | Object          | Location                                          |
+|---------------------------|-----------------|---------------------------------------------------|
+| `showcase:line`           | SketchDocument  | `Line`, three points (chevron)                    |
+| `showcase:rectangle`      | SketchDocument  | `Polygon`, four corners, axis-aligned             |
+| `showcase:circle`         | SketchDocument  | `Ellipse` with both axes equal                    |
+| `showcase:ellipse`        | SketchDocument  | `Ellipse`, major axis rotated 45°, minor 2/5 of it |
+| `showcase:multi`          | SketchDocument  | one sketch holding a line **and** a polygon **and** an ellipse |
+| `showcase:symbol:line`    | Symbol          | `Line` — a symbol that is not a point             |
+| `showcase:symbol:center`  | Symbol          | `Point`, the reference marker at the center       |
+
+Each sketch element carries its own color, width and line style (solid/dash/dot), so a client's styling can be
+checked at the same time. `showcase:multi` is the one that catches clients reading only the first sketch element.
+
+The ellipse's conjugate diameter points are the **endpoints of the two semi-axes**: the first sits `ShapeSizeM / 2`
+from the center along the rotation angle, the second 90° further round at `ShapeSizeM / 5`.
+
+### Options
+
+| Key                                  | Default         | Notes                                                    |
+|--------------------------------------|-----------------|----------------------------------------------------------|
+| `Enabled`                            | `true`          | class default; **appsettings.json ships this disabled**  |
+| `UpdateInterval`                     | `00:00:10`      | range 500ms–1h; the shapes never change, this only re-reports them |
+| `CenterLatitude` / `CenterLongitude` | `53.08` / `8.8` | Bremen, like the other offline sources                   |
+| `SpacingM`                           | `2000`          | center → each shape's own slot, range 100–100,000        |
+| `ShapeSizeM`                         | `800`           | edge length/diameter, range 50–50,000                    |
+| `ReporterId`                         | `SIM-SHAPES`    |                                                          |
+
+Covered by `GeometryShowcaseSourceTests` (every location kind present, point counts, ellipse axis lengths and
+orthogonality, stable identities across cycles).
+
+## `EasternFlankSource`
+
+Config section: `Adapter:EasternFlank`, bound to `EasternFlankOptions`. **Disabled by default** —
+`appsettings.json` ships `SyntheticScenario` as the default picture. To show the theater instead, enable this and
+disable `SyntheticScenario` (and `GeometryShowcase`, if on) so the demo map isn't competing with a test pattern.
+
+A theater-scale, fictional wargame picture: a front line from the Gulf of Finland down to the Black Sea,
+formations deployed along both sides of it, and strategic reinforcement flows feeding each side. The geography is
+real; the forces, formations and movements are invented for the demo.
+
+### The story it tells
+
+The front is not static. One full `CycleDuration` covers four phases, then repeats:
+
+1. The eastern side breaks through at the Polish border sector, with supporting attacks in the Ukrainian south
+   and in Lithuania that start and finish at different times. The line bulges up to `MaxBulgeKm` west and the
+   ground taken is drawn as a red **occupied territory** polygon; a `Breakthrough` event is raised at the peak.
+2. Reinforcements arriving over the transatlantic route push the bulge back to the border.
+3. The western side counter-attacks in the Latvian sector. The line bulges east and the ground taken is drawn as
+   a blue **liberated territory** polygon; a `Counter-offensive` event is raised.
+4. Eastern reserves arriving over the Trans-Siberian route and the Iranian supply line press it back to the
+   border.
+
+Six pushes with their own sectors, depths and windows overlap through the cycle, and a slow ripple runs along the
+whole line, so the trace keeps changing shape instead of growing and shrinking as one smooth arc.
+
+The SITREP text, the standing task's completion ratio and every formation's "attacking"/"holding" note follow the
+same phase, so the map, the task list and the text all tell one story.
+
+### What it emits (~140 objects at the default counts)
+
+| Group                | Objects                                   | What it shows                                                                         |
+|----------------------|-------------------------------------------|---------------------------------------------------------------------------------------|
+| Front line           | 2 × `SketchDocument`                      | The pre-conflict border (dotted, for reference) and the current FLOT that moves with the fighting |
+| Captured ground      | up to 2 × `SketchDocument`                | Polygons between border and FLOT, only while a side is ahead                          |
+| Ground forces        | 2 × `FrontUnitsPerSide` Symbols           | Named formations deployed 45 km behind their own side. Each is a different branch — armor, mechanized infantry, artillery, rocket artillery, air defense, engineers, missiles, cavalry, signals, intelligence, medical, transport, supply — so the line reads as a combined arms force |
+| Losses               | occasional deletions                      | A formation is destroyed every `CycleDuration / 6`: reported once with an expiry in the past so the object is deleted from the situation, plus a short-lived loss report; a replacement takes the sector in the next window, under the same identity — which works because a delete in this simulator is a soft delete of an object rather than a tombstone on its identity (see [Architecture](../../../docs/ARCHITECTURE.md#interface-semantics-implemented)) |
+| Strategic flows      | `UsReinforcementCount` + `EasternReserveCount` Symbols | Transports on the transatlantic route (vessels at sea, ground transport once ashore) and rail echelons from the far east |
+| Routes               | 3 × `Route`                               | SLOC AMBER (Norfolk → Warsaw), LOC GRANITE (Beijing → Minsk) and LOC SAFFRON (Tehran → Gomel), with named waypoints |
+| Southern supply line | `SouthernSupplyCount` Symbols             | Materiel from Iran: overland to Bandar Anzali, by ship across the Caspian, then up the Volga corridor to the eastern staging area |
+| Air                  | 2 × `AirPatrolsPerSide` Symbols           | Fighters, airborne early warning, tankers, attack helicopters, unmanned reconnaissance and bombers, each on its own station |
+| Naval                | 20 Symbols over 17 stations               | Deliberately spread right across the world's oceans and mostly alone: carrier groups in the North Atlantic, the Barents and the North Pacific are the only places two hulls share a station, and beside them single ships work the South Atlantic, the South and Central Pacific, the Indian Ocean, the Arabian Sea, the Gulf of Aden, the Mediterranean, the Norwegian Sea, the Baltic and the Black Sea, plus a submarine on each side in deep water. Capped by `MaxVesselsPerNavalGroup` |
+| Zones                | 12 × `SketchDocument`                     | A2/AD umbrellas and integrated air defense as circles, plus staging areas on both sides |
+| Control measures     | 7 × `SketchDocument`                      | One of every area shape a client has to be able to draw: two named areas of interest and a restricted operations zone as **rectangles** — `Polygon` locations of exactly four corners, which is what tells a rectangle from a closed freehand area — two phase lines as **polylines** (`Line`), and two missile engagement zones as **ellipses** with unequal axes turned along the front (`Ellipse`), since every other ellipse here is a circle and a circle never exercises the major/minor/rotation handling. Planned graphics: they stay where they were drawn and the front moves through them |
+| ORBAT                | 6 × `OrganizationUnit`                    | Corps and divisions per side (the contract's `UnitDesignation` stops at Regiment, so the echelon lives in the name) |
+| Special forces       | 2 × `SpecialForcesTeamsPerSide` Symbols   | Ground, maritime and aviation teams 600–1500 km into the other side's hinterland, on what the far side of the theater runs on rather than just over the line: the air defense belt at Voronezh, the rail junction at Tula, the Northern Fleet in the Kola inlet and the Volga production complex on one side; the port of debarkation at Bremerhaven, the theater air hub at Ramstein, the Rotterdam approaches and the air base at Lakenheath on the other — drawn with the bare special operations battle dimension (`SFFP-----------` / `SHFP-----------`), not as ordinary infantry, so a client that derives its own type from the symbol code reads them back as SOF rather than as a ground unit a level deeper; the branch is named in the description — infiltrating → on the objective → exfiltrating |
+| Satellites           | 5 Symbols                                 | Three western and two eastern reconnaissance satellites — imagery, signals collection, a sun-synchronous polar pass and an ocean surveillance orbit — ground tracks sweeping the globe |
+| Unknown tracks       | `UnknownContactCount` Symbols             | Unclassified sensor contacts drifting across the line, drawn with the **unknown** affiliation |
+| Neutral traffic      | `NeutralTrafficCount` Symbols             | Civilian shipping and relief convoys, drawn with the **neutral** affiliation           |
+| Installations        | 33 Symbols                                | Air and naval bases, depots and logistics hubs on both sides — from Norfolk and Fort Bragg through Ramstein and Rzeszow to Severomorsk, Engels, Tartus and Vladivostok — plus civilian industry, ports, refineries and strait transits drawn neutral. Deliberately spread out: the front is the focus, but not the only thing on the map |
+| Incidents            | 2 × `PictureDocument`                     | Sabotage, unmanned reconnaissance imagery and abductions, each with a picture attached; they arrive one at a time and expire |
+| Reporting            | `ActionTask`, `TextDocument`, `ActionEvent` | Standing task with live completion, theater SITREP, breakthrough/counter-offensive events |
+
+### Options
+
+| Key                    | Default      | Notes                                                             |
+|------------------------|--------------|--------------------------------------------------------------------|
+| `Enabled`              | `true`       | class default; **appsettings.json ships this disabled**            |
+| `UpdateInterval`       | `00:00:02`   | how often the picture is re-reported                               |
+| `CycleDuration`        | `00:03:00`   | one full swing: breakthrough, pushed back, counter-attack, pushed back — about 45 s per phase |
+| `MaxBulgeKm`           | `160`        | how deep a breakthrough goes at its peak, range 10–600             |
+| `FrontUnitsPerSide`    | `8`          | formations along the line per side — deliberately sparse, so the line reads as a front rather than a wall of icons |
+| `UsReinforcementCount` | `6`          | transports on the transatlantic route                              |
+| `EasternReserveCount`  | `5`          | echelons on the eastern rail route                                 |
+| `AirPatrolsPerSide`    | `3`          |                                                                    |
+| `MaxVesselsPerNavalGroup` | `2`       | upper bound per station, range 0–2; most stations hold one ship anyway, so this only bites on the three two-hull groups |
+| `SouthernSupplyCount`  | `5`          | transports on the Iranian supply line                              |
+| `SpecialForcesTeamsPerSide` | `3`     | teams working objectives deep behind the other side's line, range 0–3 |
+| `ShowSatellites`       | `true`       | three western, two eastern reconnaissance satellites               |
+| `SatelliteOrbitDuration` | `00:03:00` | one orbit; short enough that a viewer sees a full pass             |
+| `UnknownContactCount`  | `4`          | unclassified tracks, range 0–4                                     |
+| `NeutralTrafficCount`  | `4`          | civilian shipping and relief convoys, range 0–4                    |
+| `ShowInstallations`    | `true`       | bases, depots, plants, ports                                       |
+| `ShowIncidents`        | `true`       | incident reports with imagery                                      |
+| `ShowLosses`           | `true`       | formations destroyed and deleted from the situation                |
+| `TrackTimeToLive`      | `00:05:00`   | expiry stamped on **every** object and pushed forward each cycle — see below |
+| `ReporterId`           | `SIM-FLANK`  |                                                                    |
+
+Sizing for the room: the default three-minute cycle is deliberately short — nobody watches a map for twenty
+minutes waiting for a front to move, so the whole story plays out while someone is still looking at it. Raise
+`CycleDuration` for a slower, more realistic tempo, or `FrontUnitsPerSide` for a denser line. The air and naval
+orbits are derived from `CycleDuration`, so changing it speeds up or slows down the whole picture together. All
+of it is hot-reloadable — an edit to `appsettings.json` takes effect on the next cycle, no restart.
+
+All four MIL-STD-2525C affiliations are on the map at once — friendly, hostile, neutral and unknown — which is
+worth knowing if a client renders them differently or filters on them.
+
+The drawn geometry is graded rather than uniform: seven line weights between 1 and 8 pixels across the sketches,
+following how binding a line is — the FLOT at 8, the pre-conflict border at 1, since that one is reference rather
+than a control measure. That matters if a client's line width handling needs exercising: a picture drawn entirely at
+one weight leaves it untested. Everything stays inside 1–10, which is the range the TAK adapter clamps to.
+
+**Everything carries a rolling expiry.** Every object the source reports gets an expiry of `TrackTimeToLive` from
+now, refreshed on every cycle, and not just the moving symbols: the ORBAT, the routes, the border, the zones and
+the fixed installations get one too. Two things depend on it. A client that ages objects out by their expiry —
+a TAK client's stale time, for one — would otherwise drop the static half of the picture off the map while the
+simulator was still faithfully re-reporting it, because nothing about those objects ever changes. And since the
+stamp moves forward every cycle, it is itself a real change on an otherwise identical object, so a consumer that
+suppresses no-op updates still sees a heartbeat. The objects that manage their own lifetime keep it: a formation
+reported destroyed carries an expiry in the past so the situation deletes it, and the loss reports, incident
+pictures and the SITREP each have a window of their own. The flip side is that stopping the adapter now empties
+the situation within `TrackTimeToLive` instead of leaving the static frame behind forever.
+
+Nothing on the map sits perfectly still: even a holding formation sways between reports, because a picture where
+half the symbols never move reads as frozen rather than live. Installations are the deliberate exception.
+
+Covered by `EasternFlankSourceTests` (both sides and the strategic flows present with unique identities and
+valid 15-character symbol codes, the line bulging west then back then east across one cycle, captured ground
+appearing only while a side is ahead, transports moving along their route, satellites/special forces/
+installations emitted in the expected numbers, all four affiliations present, everything except the
+installations moving between two reports ten seconds apart, vessels never more than two to a station and spread
+over both hemispheres, every object carrying an expiry that moves forward between cycles, and the objects with a
+lifetime of their own keeping it).

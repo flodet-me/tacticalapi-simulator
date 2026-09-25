@@ -56,7 +56,7 @@ public sealed class SymbolMerger : ISituationObjectMerger
         return new SituationObject
         {
             Symbol = symbol,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

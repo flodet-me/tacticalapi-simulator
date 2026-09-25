@@ -307,4 +307,23 @@ internal static class PropertyMerge
             Content = isDeleted
         };
     }
+
+    /// <summary>
+    ///     is_deleted on an incoming add/update, merged by the same rule as every other property:
+    ///     a strictly newer report wins, an older or same-time one leaves the flag alone.
+    ///     A delete is a soft delete of an object, not a tombstone on its identity. Pinning the flag
+    ///     on forever would make an identity unusable for the rest of the process's life, so a
+    ///     source that reports something again after it was removed - a replacement moving into the
+    ///     same slot, a track re-acquired after being dropped, an operator re-adding what they just
+    ///     deleted - could never get it back onto the map: the writes would be accepted, merged and
+    ///     even announced on the stream, and the object would stay invisible in every snapshot.
+    /// </summary>
+    internal static DataPropertyBool Undelete(DataPropertyBool? current, CreationMetaData meta)
+    {
+        if (current is null) return Deleted(false, meta);
+
+        return current.Content != true || IsStale(current.CreationMetaData?.CreationTime, meta.CreationTime)
+            ? current
+            : Deleted(false, meta);
+    }
 }

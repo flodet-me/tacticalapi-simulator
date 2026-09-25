@@ -50,7 +50,7 @@ public sealed class OverlayDocumentMerger : ISituationObjectMerger
         return new SituationObject
         {
             OverlayDocument = doc,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

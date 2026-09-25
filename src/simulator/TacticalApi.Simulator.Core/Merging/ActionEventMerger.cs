@@ -50,7 +50,7 @@ public sealed class ActionEventMerger : ISituationObjectMerger
         return new SituationObject
         {
             ActionEvent = actionEvent,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }

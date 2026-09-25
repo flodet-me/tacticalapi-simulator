@@ -54,7 +54,7 @@ Per-source implementation detail lives with the source, not here:
 - `GetSituationObjects` returns all non-deleted objects.
 - `SubscribeSituationObjectEvents` first streams the full snapshot (batched), then live changes.
 - `AddOrUpdateSituationObjects` merges per the contract: an omitted `UpdateProperty*` leaves the stored value untouched; a present one replaces it (content may be null to clear). Each written property gets fresh `CreationMetaData` from the update's reporter/reporting time. Per-object last-write-wins: updates with an older `reporting_time` than the stored one are ignored.
-- `DeleteSituationObjects` marks objects deleted (`is_deleted`), and deleted objects disappear from snapshots but are still announced on the event stream.
+- `DeleteSituationObjects` marks objects deleted (`is_deleted`), and deleted objects disappear from snapshots but are still announced on the event stream. A delete is a soft delete of an object, not a tombstone on its identity: `is_deleted` merges by the same last-write-wins rule as every other property, so a later add/update for that identity brings the object back, while one from before the delete leaves it deleted. Without that, an identity would be unusable for the rest of the process's life — the writes would be accepted, merged and even announced on the stream, and the object would stay invisible in every snapshot.
 - Objects whose `expiry_time` has passed are automatically marked deleted by a background sweeper.
 
 Every situation object type in the contract has a registered `ISituationObjectMerger` (see [Extending](EXTENDING.md#adding-support-for-more-situation-object-types) for how to add another).

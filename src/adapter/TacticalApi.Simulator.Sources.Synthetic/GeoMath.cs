@@ -27,6 +27,22 @@ internal static class GeoMath
         return (lat2 * 180.0 / Math.PI, lon2 * 180.0 / Math.PI);
     }
 
+    /// <summary>
+    ///     Initial great-circle bearing in degrees [0,360) from one point to another - the heading a
+    ///     moving object reports while it travels that leg.
+    /// </summary>
+    public static double Bearing((double Lat, double Lon) from, (double Lat, double Lon) to)
+    {
+        var phi1 = from.Lat * Math.PI / 180.0;
+        var phi2 = to.Lat * Math.PI / 180.0;
+        var deltaLambda = (to.Lon - from.Lon) * Math.PI / 180.0;
+
+        var y = Math.Sin(deltaLambda) * Math.Cos(phi2);
+        var x = Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(deltaLambda);
+
+        return (Math.Atan2(y, x) * 180.0 / Math.PI + 360) % 360;
+    }
+
     /// <summary>Haversine distance in meters between two points.</summary>
     public static double DistanceMeters(double lat1, double lon1, double lat2, double lon2)
     {

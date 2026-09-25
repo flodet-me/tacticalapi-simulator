@@ -47,7 +47,7 @@ public sealed class OrganizationUnitMerger : ISituationObjectMerger
         return new SituationObject
         {
             OrganizationUnit = unit,
-            IsDeleted = current?.IsDeleted ?? PropertyMerge.Deleted(false, meta)
+            IsDeleted = PropertyMerge.Undelete(current?.IsDeleted, meta)
         };
     }
 }
