@@ -47,8 +47,10 @@ public sealed record MapSketchElement(
     string? FillStyle);
 
 /// <summary>
-///     A MIL-STD-2525/APP-6 symbol identifier (SIDC), present only when the underlying object
-///     carries a string-form identifier the frontend's symbol renderer can draw.
+///     A MIL-STD-2525/APP-6 symbol identifier in the string form the frontend's symbol renderer
+///     draws: a string-form identifier (2525B/C, APP-6B) as it stands, or a numeric one
+///     (2525D/E, APP-6D/E) as its two ten-digit sets joined into one 20-digit code. Absent when
+///     the object carries no identifier, or one that can't be a SIDC.
 /// </summary>
 public sealed record MapSymbolIdentifier(string Sidc, string Catalog);
 

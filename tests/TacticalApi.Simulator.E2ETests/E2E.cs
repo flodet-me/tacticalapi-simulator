@@ -13,7 +13,8 @@ internal static class E2E
         string? name = null,
         double? latitude = null,
         double? longitude = null,
-        DateTimeOffset? expiry = null)
+        DateTimeOffset? expiry = null,
+        SymbolIdentifier? symbolIdentifier = null)
     {
         var symbol = new UpdateSymbol
         {
@@ -46,6 +47,9 @@ internal static class E2E
             {
                 Content = Timestamp.FromDateTimeOffset(expiry.Value)
             };
+
+        if (symbolIdentifier is not null)
+            symbol.SymbolIdentifier = new UpdatePropertySymbolIdentifier { Content = symbolIdentifier };
 
         return new UpdateSituationObject { Symbol = symbol };
     }
