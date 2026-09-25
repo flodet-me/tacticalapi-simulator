@@ -10,7 +10,7 @@ Simulated data sources (a synthetic air picture, a live [OpenSky Network](https:
 
 ## Running
 
-Requires the .NET 10 SDK. If you have [Nix](https://nixos.org/) instead (with flakes enabled), `nix develop` (or `direnv allow`, once) gets you that plus `act`, `grpcurl`, `tshark`, `jq`, `yq-go` and `python3` with no other setup - see [Nix](docs/NIX.md).
+Requires the .NET 10 SDK. If you have [Nix](https://nixos.org/) instead (with flakes enabled), `nix develop` (or `direnv allow`, once) gets you that plus `act`, `gh`, `grpcurl`, `tshark`, `jq`, `yq-go` and `python3` with no other setup - see [Nix](docs/NIX.md).
 
 ```bash
 # The server: store + Situation gRPC service + map UI.
