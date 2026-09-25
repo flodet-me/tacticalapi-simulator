@@ -8,7 +8,7 @@ namespace TacticalApi.Simulator.Sources.Synthetic;
 ///     each individually styled. Sketches are the one place in the contract where free geometry can
 ///     carry its own color and line style, which is what makes them the natural carrier for control
 ///     measures (phase lines, boundaries, zones) as well as for a plain drawn shape.
-///     Shared by <see cref="GeometryShowcaseSource" /> and <see cref="DemoOperationSource" /> so the
+///     Shared by <see cref="GeometryShowcaseSource" /> and <see cref="EasternFlankSource" /> so the
 ///     nesting (document → sketch location → element → geometry) is written once.
 /// </summary>
 internal static class SketchBuilder

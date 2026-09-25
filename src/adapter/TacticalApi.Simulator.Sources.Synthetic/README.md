@@ -247,8 +247,10 @@ ingest into the store).
 
 ## `GeometryShowcaseSource`
 
-Config section: `Adapter:GeometryShowcase`, bound to `GeometryShowcaseOptions`. **Enabled by default** — it is
-seven static objects, so it costs nothing to leave on beside `SyntheticScenario`.
+Config section: `Adapter:GeometryShowcase`, bound to `GeometryShowcaseOptions`. **Disabled by default** — it is a
+test pattern, not demo content, so switch it on while checking a client's rendering. It is seven static objects,
+so it costs nothing to run beside `SyntheticScenario`, but they carry no expiry: switched off again, they stay in
+the Host until it restarts.
 
 Exists for one question the scenario sources answer badly: *does my client draw every location kind correctly?*
 They do emit polygons, ellipses and sketches, but buried in a moving picture and partly behind random incidents.
@@ -277,7 +279,7 @@ from the center along the rotation angle, the second 90° further round at `Shap
 
 | Key                                  | Default         | Notes                                                    |
 |--------------------------------------|-----------------|----------------------------------------------------------|
-| `Enabled`                            | `true`          |                                                          |
+| `Enabled`                            | `true`          | class default; **appsettings.json ships this disabled**  |
 | `UpdateInterval`                     | `00:00:10`      | range 500ms–1h; the shapes never change, this only re-reports them |
 | `CenterLatitude` / `CenterLongitude` | `53.08` / `8.8` | Bremen, like the other offline sources                   |
 | `SpacingM`                           | `2000`          | center → each shape's own slot, range 100–100,000        |
@@ -289,9 +291,9 @@ orthogonality, stable identities across cycles).
 
 ## `EasternFlankSource`
 
-Config section: `Adapter:EasternFlank`, bound to `EasternFlankOptions`. **Enabled by default** — this is the
-picture the adapter ships showing, with `SyntheticScenario` and `GeometryShowcase` disabled beside it so the demo
-map isn't competing with a test pattern. Flip the three `Enabled` flags to swap profiles.
+Config section: `Adapter:EasternFlank`, bound to `EasternFlankOptions`. **Disabled by default** —
+`appsettings.json` ships `SyntheticScenario` as the default picture. To show the theater instead, enable this and
+disable `SyntheticScenario` (and `GeometryShowcase`, if on) so the demo map isn't competing with a test pattern.
 
 A theater-scale, fictional wargame picture: a front line from the Gulf of Finland down to the Black Sea,
 formations deployed along both sides of it, and strategic reinforcement flows feeding each side. The geography is
@@ -344,7 +346,7 @@ same phase, so the map, the task list and the text all tell one story.
 
 | Key                    | Default      | Notes                                                             |
 |------------------------|--------------|--------------------------------------------------------------------|
-| `Enabled`              | `true`       |                                                                    |
+| `Enabled`              | `true`       | class default; **appsettings.json ships this disabled**            |
 | `UpdateInterval`       | `00:00:02`   | how often the picture is re-reported                               |
 | `CycleDuration`        | `00:03:00`   | one full swing: breakthrough, pushed back, counter-attack, pushed back — about 45 s per phase |
 | `MaxBulgeKm`           | `160`        | how deep a breakthrough goes at its peak, range 10–600             |
